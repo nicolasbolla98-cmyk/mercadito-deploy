@@ -26,6 +26,17 @@ app.use('/api/orders', require('./routes/orders'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/payments', require('./routes/payments'));
 
+// Public settings endpoint
+app.get('/api/settings', (req, res) => {
+  try {
+    const { db } = require('./db/database');
+    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const out = {};
+    rows.forEach(r => { out[r.key] = r.value; });
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: 'Error' }); }
+});
+
 // En producción, todas las rutas no-API devuelven el index.html de React
 if (isProd) {
   app.get('*', (req, res) => {

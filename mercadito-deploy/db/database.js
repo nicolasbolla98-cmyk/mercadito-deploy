@@ -69,6 +69,29 @@ function initializeDatabase() {
     );
   `);
 
+  // Settings table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+  `);
+
+  // Seed default settings
+  const defaultSettings = [
+    ['store_name', 'Mercadito la U'],
+    ['whatsapp', '59894022121'],
+    ['address', 'Ruta Interbalnearia km 36.500, Empalme Olmos'],
+    ['hours', 'Lun-Sab 8:00-20:00 | Dom 8:00-14:00'],
+    ['bank_name', ''],
+    ['bank_account_holder', ''],
+    ['bank_account_number', ''],
+    ['bank_extra', ''],
+    ['transfer_note', 'Una vez realizada la transferencia, envia el comprobante por WhatsApp.'],
+  ];
+  const insSetting = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+  for (const [k, v] of defaultSettings) insSetting.run(k, v);
+
   // Migrations
   const userCols = db.pragma('table_info(users)').map(c => c.name);
   if (!userCols.includes('permissions'))     db.exec("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT NULL");

@@ -212,3 +212,27 @@ router.delete('/admins/:id', requirePermission('admins'), (req, res) => {
 });
 
 module.exports = router;
+
+// ── SETTINGS ───────────────────────────────────────────
+router.get('/settings', (req, res) => {
+  try {
+    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const out = {};
+    rows.forEach(r => { out[r.key] = r.value; });
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: 'Error' }); }
+});
+
+router.put('/settings', requirePermission('settings'), (req, res) => {
+  try {
+    const allowed = ['store_name','whatsapp','address','hours','bank_name','bank_account_holder','bank_account_number','bank_extra','transfer_note'];
+    const upsert = db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) upsert.run(key, req.body[key]);
+    }
+    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const out = {};
+    rows.forEach(r => { out[r.key] = r.value; });
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: 'Error al guardar' }); }
+});
