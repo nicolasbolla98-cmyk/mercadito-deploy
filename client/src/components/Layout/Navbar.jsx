@@ -24,6 +24,7 @@ export default function Navbar() {
   const handleLogout = () => {
     logout()
     setDropdownOpen(false)
+    setMobileOpen(false)
     navigate('/')
   }
 
@@ -42,6 +43,23 @@ export default function Navbar() {
         {isAuthenticated && isAdmin && (
           <li><NavLink to="/admin" onClick={closeMobile}>Panel Admin</NavLink></li>
         )}
+        {/* Auth links inside mobile menu */}
+        {!isAuthenticated && (
+          <>
+            <li className="mobile-only"><NavLink to="/login" onClick={closeMobile}>Ingresar</NavLink></li>
+            <li className="mobile-only"><NavLink to="/registro" onClick={closeMobile}>Registrarse</NavLink></li>
+          </>
+        )}
+        {isAuthenticated && (
+          <>
+            {!isAdmin && <li className="mobile-only"><NavLink to="/mis-pedidos" onClick={closeMobile}>Mis Pedidos</NavLink></li>}
+            <li className="mobile-only">
+              <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.8)', fontFamily: 'Poppins', fontWeight: 500, fontSize: '1rem', cursor: 'pointer', padding: '1rem', width: '100%', textAlign: 'left', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                Cerrar sesión
+              </button>
+            </li>
+          </>
+        )}
       </ul>
 
       <div className="navbar-actions">
@@ -50,13 +68,14 @@ export default function Navbar() {
           {itemCount > 0 && <span className="cart-badge">{itemCount > 99 ? '99+' : itemCount}</span>}
         </Link>
 
+        {/* Desktop auth buttons */}
         {!isAuthenticated ? (
-          <>
+          <div className="desktop-only" style={{ display: 'flex', gap: '0.5rem' }}>
             <Link to="/login" className="btn btn-outline btn-sm">Ingresar</Link>
             <Link to="/registro" className="btn btn-primary btn-sm">Registrarse</Link>
-          </>
+          </div>
         ) : (
-          <div className="user-menu" ref={dropdownRef}>
+          <div className="user-menu desktop-only" ref={dropdownRef}>
             <button
               className="user-menu-trigger"
               onClick={() => setDropdownOpen(prev => !prev)}

@@ -41,6 +41,8 @@ body { font-family: 'Poppins', sans-serif; background: var(--light); color: var(
 .btn-lg { padding: 0.9rem 2rem; font-size: 1rem; }
 .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none !important; }
 .hamburger { display: none; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; }
+.mobile-only { display: none; }
+.desktop-only { display: flex; }
 
 /* Hero section */
 .hero { min-height: 90vh; background: linear-gradient(135deg, #111827 0%, #1a2f1a 50%, #111827 100%); display: flex; align-items: center; justify-content: center; text-align: center; padding: 2rem; position: relative; overflow: hidden; }
@@ -315,6 +317,8 @@ footer a { color: var(--green); text-decoration: none; }
 @media (max-width: 768px) {
   .navbar-links { display: none; }
   .hamburger { display: block; }
+  .desktop-only { display: none !important; }
+  .mobile-only { display: block; }
   .navbar-links.mobile-open { display: flex; flex-direction: column; position: absolute; top: 73px; left: 0; right: 0; background: var(--dark); padding: 1rem; gap: 0; z-index: 999; }
   .navbar-links.mobile-open li a { padding: 1rem; border-bottom: 1px solid rgba(255,255,255,0.1); display: block; }
   .products-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
