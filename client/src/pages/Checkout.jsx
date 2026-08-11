@@ -98,6 +98,11 @@ export default function Checkout() {
             </div>
           ) : success.payment_method === 'credito' ? (
             <p>Tu pedido fue pagado con tu credito disponible. Quedamos a tu disposicion.</p>
+          ) : success.payment_method === 'fiado' ? (
+            <div style={{ background: '#fef3c7', borderRadius: 10, padding: '1rem', marginBottom: '1rem', textAlign: 'left' }}>
+              <p style={{ fontWeight: 700, marginBottom: '0.5rem' }}>Solicitud de fiado enviada</p>
+              <p style={{ fontSize: '0.9rem', color: 'var(--gray)' }}>El negocio revisará tu solicitud y te avisará si fue aprobada. Mientras tanto tu pedido quedó registrado.</p>
+            </div>
           ) : (
             <p>Tu pedido fue registrado. Te contactaremos para coordinar la entrega y el pago en efectivo.</p>
           )}
@@ -180,6 +185,13 @@ export default function Checkout() {
                       Saldo: ${creditBalance.toLocaleString('es-UY')}
                       {!hasEnoughCredit && <span style={{ color: 'var(--danger)', display: 'block' }}>Insuficiente</span>}
                     </div>
+                  </div>
+                )}
+                {user && (
+                  <div className={`payment-method-option ${paymentMethod === 'fiado' ? 'selected' : ''}`} onClick={() => setPaymentMethod('fiado')}>
+                    <div className="payment-method-icon">🤝</div>
+                    <div className="payment-method-label">Pedir fiado</div>
+                    <div className="payment-method-desc">El negocio aprueba tu solicitud</div>
                   </div>
                 )}
               </div>

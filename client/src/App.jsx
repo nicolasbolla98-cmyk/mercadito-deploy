@@ -20,6 +20,7 @@ import AdminCustomers from './pages/admin/AdminCustomers'
 import AdminCategories from './pages/admin/AdminCategories'
 import AdminAdmins from './pages/admin/AdminAdmins'
 import AdminSettings from './pages/admin/AdminSettings'
+import AdminDeudas from './pages/admin/AdminDeudas'
 
 export default function App() {
   return (
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="clientes" element={<AdminCustomers />} />
             <Route path="administradores" element={<AdminAdmins />} />
             <Route path="configuracion" element={<AdminSettings />} />
+            <Route path="deudas" element={<AdminDeudas />} />
           </Route>
         </Routes>
         <Footer />

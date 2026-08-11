@@ -67,6 +67,17 @@ export default function AdminOrders() {
     }
   }
 
+  const handleFiado = async (orderId, action) => {
+    try {
+      const res = await api.patch(`/api/admin/orders/${orderId}/${action}`)
+      setSelectedOrder(prev => ({ ...prev, ...res.data }))
+      await fetchOrders()
+      showSuccess(action === 'approve-fiado' ? 'Fiado aprobado' : action === 'reject-fiado' ? 'Fiado rechazado' : 'Deuda saldada')
+    } catch (err) {
+      setError(err.response?.data?.error || 'Error')
+    }
+  }
+
   return (
     <div>
       <div className="admin-header">
@@ -272,6 +283,34 @@ export default function AdminOrders() {
                 </span>
               </div>
             </div>
+
+            {/* Fiado actions */}
+            {selectedOrder.payment_method === 'fiado' && selectedOrder.payment_status === 'pendiente' && (
+              <div style={{ background: '#fef3c7', borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
+                <p style={{ fontWeight: 700, marginBottom: '0.75rem' }}>🤝 Solicitud de fiado pendiente</p>
+                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => handleFiado(selectedOrder.id, 'approve-fiado')}>
+                    Aprobar fiado
+                  </button>
+                  <button className="btn btn-danger" style={{ flex: 1 }} onClick={() => handleFiado(selectedOrder.id, 'reject-fiado')}>
+                    Rechazar
+                  </button>
+                </div>
+              </div>
+            )}
+            {selectedOrder.payment_method === 'fiado' && selectedOrder.payment_status === 'aprobado' && (
+              <div style={{ background: '#d1fae5', borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
+                <p style={{ fontWeight: 700, marginBottom: '0.75rem' }}>Fiado aprobado — deuda pendiente de cobro</p>
+                <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => handleFiado(selectedOrder.id, 'saldar')}>
+                  Marcar como saldado (cliente pagó)
+                </button>
+              </div>
+            )}
+            {selectedOrder.payment_method === 'fiado' && selectedOrder.payment_status === 'saldado' && (
+              <div style={{ background: '#d1fae5', borderRadius: 10, padding: '1rem', marginBottom: '1rem' }}>
+                <p style={{ fontWeight: 700, color: '#065f46' }}>Deuda saldada</p>
+              </div>
+            )}
 
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={closeModal}>Cerrar</button>

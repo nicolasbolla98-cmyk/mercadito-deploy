@@ -211,6 +211,52 @@ router.delete('/admins/:id', requirePermission('admins'), (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
+// Aprobar pedido fiado
+router.patch('/orders/:id/approve-fiado', (req, res) => {
+  try {
+    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+    if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+    db.prepare("UPDATE orders SET payment_status='aprobado', status=CASE WHEN status='pendiente' THEN 'confirmado' ELSE status END WHERE id=?").run(req.params.id);
+    res.json(db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id));
+  } catch(e) { res.status(500).json({ error: 'Error' }); }
+});
+
+// Rechazar pedido fiado
+router.patch('/orders/:id/reject-fiado', (req, res) => {
+  try {
+    db.prepare("UPDATE orders SET payment_status='rechazado', status='cancelado' WHERE id=?").run(req.params.id);
+    res.json(db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id));
+  } catch(e) { res.status(500).json({ error: 'Error' }); }
+});
+
+// Saldar deuda fiado
+router.patch('/orders/:id/saldar', (req, res) => {
+  try {
+    db.prepare("UPDATE orders SET payment_status='saldado' WHERE id=?").run(req.params.id);
+    res.json(db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id));
+  } catch(e) { res.status(500).json({ error: 'Error' }); }
+});
+
+// Lista de deudas (pedidos fiado aprobados sin saldar)
+router.get('/deudas', (req, res) => {
+  try {
+    const orders = db.prepare(`
+      SELECT o.*, u.name as user_name, u.phone as user_phone
+      FROM orders o LEFT JOIN users u ON o.user_id = u.id
+      WHERE o.payment_method = 'fiado' AND o.payment_status = 'aprobado'
+      ORDER BY o.created_at ASC
+    `).all();
+    const map = {};
+    for (const o of orders) {
+      const key = o.user_id || o.customer_email;
+      if (!map[key]) map[key] = { id: o.user_id, name: o.customer_name, email: o.customer_email, phone: o.customer_phone || o.user_phone, orders: [], total_deuda: 0 };
+      map[key].orders.push(o);
+      map[key].total_deuda += o.total;
+    }
+    res.json(Object.values(map));
+  } catch(e) { res.status(500).json({ error: 'Error' }); }
+});
+
 module.exports = router;
 
 // ── SETTINGS ───────────────────────────────────────────

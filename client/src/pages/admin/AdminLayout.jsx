@@ -6,6 +6,7 @@ import api from '../../api/axios'
 const NAV_LINKS = [
   { to: '/admin', label: 'Dashboard', icon: '📊', end: true },
   { to: '/admin/pedidos', label: 'Pedidos', icon: '🛒' },
+  { to: '/admin/deudas', label: 'Deudas', icon: '🤝' },
   { to: '/admin/productos', label: 'Productos', icon: '📦' },
   { to: '/admin/categorias', label: 'Categorias', icon: '🏷️' },
   { to: '/admin/clientes', label: 'Clientes', icon: '👥' },

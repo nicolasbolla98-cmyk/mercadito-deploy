@@ -20,7 +20,7 @@ router.post('/', optionalAuth, (req, res) => {
     if (!customer_name || !customer_email) return res.status(400).json({ error: 'Nombre y email requeridos' });
     if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'El pedido debe tener al menos un producto' });
 
-    const method = ['efectivo', 'credito', 'transferencia'].includes(payment_method) ? payment_method : 'efectivo';
+    const method = ['efectivo', 'credito', 'transferencia', 'fiado'].includes(payment_method) ? payment_method : 'efectivo';
 
     let total = 0;
     const validatedItems = [];
@@ -47,6 +47,10 @@ router.post('/', optionalAuth, (req, res) => {
         return res.status(400).json({ error: `Credito insuficiente. Saldo disponible: $${user?.credit_balance?.toLocaleString('es-UY') || 0}` });
       }
     }
+    // Fiado requiere estar logueado
+    if (method === 'fiado' && !req.user) {
+      return res.status(400).json({ error: 'Debes iniciar sesion para pedir fiado' });
+    }
 
     const createOrder = db.transaction(() => {
       // Si paga con credito, descontar saldo
@@ -55,6 +59,7 @@ router.post('/', optionalAuth, (req, res) => {
         db.prepare('UPDATE users SET credit_balance = credit_balance - ? WHERE id = ?').run(total, req.user.id);
         paymentStatus = 'pagado';
       }
+      // fiado queda en pendiente esperando aprobacion del admin
 
       const r = db.prepare(`
         INSERT INTO orders (user_id, customer_name, customer_email, customer_phone, customer_address, notes, total, status, payment_method, payment_status)
