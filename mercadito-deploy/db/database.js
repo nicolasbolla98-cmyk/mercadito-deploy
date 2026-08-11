@@ -1,20 +1,20 @@
 const Database = require('better-sqlite3');
-  const bcrypt = require('bcryptjs');                                           
-  const path = require('path');           
-  const db = new Database(path.join(__dirname, 'mercadito.db'));                
+  const bcrypt = require('bcryptjs');
+  const path = require('path');                                                 
+  const db = new Database(path.join(__dirname, 'mercadito.db'));
   function initializeDatabase() {                                               
-    db.pragma('journal_mode = WAL');
-    db.exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY           
+    db.pragma('journal_mode = WAL');          
+    db.exec('CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY 
   AUTOINCREMENT, name TEXT NOT NULL, email TEXT UNIQUE NOT NULL, phone TEXT, 
-  password TEXT NOT NULL, role TEXT NOT NULL DEFAULT "customer", created_at 
-  DATETIME DEFAULT CURRENT_TIMESTAMP)');                                        
+  password TEXT NOT NULL, role TEXT NOT NULL DEFAULT "customer", created_at     
+  DATETIME DEFAULT CURRENT_TIMESTAMP)');
     db.exec('CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY      
-  AUTOINCREMENT, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, icon TEXT,      
+  AUTOINCREMENT, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, icon TEXT, 
   active INTEGER NOT NULL DEFAULT 1)');                                         
     db.exec('CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY 
-  AUTOINCREMENT, name TEXT NOT NULL, description TEXT, price REAL NOT NULL, 
+  AUTOINCREMENT, name TEXT NOT NULL, description TEXT, price REAL NOT NULL,     
   stock INTEGER NOT NULL DEFAULT 0, unit TEXT NOT NULL DEFAULT "kg", category_id
-   INTEGER, image_url TEXT, active INTEGER NOT NULL DEFAULT 1, created_at 
+   INTEGER, image_url TEXT, active INTEGER NOT NULL DEFAULT 1, created_at       
   DATETIME DEFAULT CURRENT_TIMESTAMP)');                                        
     db.exec('CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY 
   AUTOINCREMENT, user_id INTEGER, customer_name TEXT NOT NULL, customer_email   
@@ -28,21 +28,21 @@ const Database = require('better-sqlite3');
     var adminPass = process.env.ADMIN_PASSWORD || 'admin123';                   
     var adminHash = bcrypt.hashSync(adminPass, 10);
     var admin = db.prepare('SELECT id FROM users WHERE email =                  
-  ?').get('admin@mercadito.com');
+  ?').get('admin@mercadito.com');             
     if (!admin) {                                                               
       db.prepare('INSERT INTO users (name, email, password, role) VALUES (?, ?, 
   ?, ?)').run('Administrador', 'admin@mercadito.com', adminHash, 'admin');      
     } else {                              
       db.prepare('UPDATE users SET password = ? WHERE email = ?').run(adminHash,
    'admin@mercadito.com');                                                      
-    }                                     
+    }
     var cats = db.prepare('SELECT COUNT(*) as count FROM categories').get();    
-    if (cats.count === 0) {                                                     
+    if (cats.count === 0) {                   
       var ins = db.prepare('INSERT INTO categories (id, name, slug, icon) VALUES
-   (?, ?, ?, ?)');                                                              
-      [[1,'Frutas','frutas','🍎'],[2,'Verduras','verduras','🥦'],[3,'Bebidas','b
-  ebidas','🥤'],[4,'Alimentos','alimentos','🥫'],[5,'Mascotas','mascotas','🐾'],
-  [6,'Lena','lena','🪵 '],[7,'Limpieza','limpieza','🧹']].forEach(function(c){
+   (?, ?, ?, ?)');
+      [[1,'Frutas','frutas',''],[2,'Verduras','verduras',''],[3,'Bebidas','bebid
+  as',''],[4,'Alimentos','alimentos',''],[5,'Mascotas','mascotas',''],[6,'Lena',
+  'lena',''],[7,'Limpieza','limpieza','']].forEach(function(c){                 
   ins.run(c[0],c[1],c[2],c[3]); });
     }                                                                           
     var prods = db.prepare('SELECT COUNT(*) as count FROM products').get();
