@@ -5,10 +5,8 @@ const path = require('path');
 const db = new Database(path.join(__dirname, 'mercadito.db'));
 
 function initializeDatabase() {
-  // Enable WAL mode for better performance
   db.pragma('journal_mode = WAL');
 
-  // Create tables
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -17,6 +15,7 @@ function initializeDatabase() {
       phone TEXT,
       password TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'customer',
+      permissions TEXT DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -53,6 +52,9 @@ function initializeDatabase() {
       notes TEXT,
       total REAL NOT NULL,
       status TEXT NOT NULL DEFAULT 'pendiente',
+      payment_method TEXT DEFAULT 'efectivo',
+      payment_status TEXT DEFAULT 'pendiente',
+      payment_id TEXT DEFAULT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
@@ -63,59 +65,64 @@ function initializeDatabase() {
       product_id INTEGER NOT NULL,
       product_name TEXT NOT NULL,
       product_price REAL NOT NULL,
-      quantity INTEGER NOT NULL,
+      quantity REAL NOT NULL,
       subtotal REAL NOT NULL,
       FOREIGN KEY (order_id) REFERENCES orders(id),
       FOREIGN KEY (product_id) REFERENCES products(id)
     );
   `);
 
-  // Seed admin user if not exists
+  // Migrate: add missing columns if they don't exist
+  const userCols = db.pragma('table_info(users)').map(c => c.name);
+  if (!userCols.includes('permissions')) {
+    db.exec("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT NULL");
+  }
+
+  const orderCols = db.pragma('table_info(orders)').map(c => c.name);
+  if (!orderCols.includes('payment_method')) {
+    db.exec("ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'efectivo'");
+  }
+  if (!orderCols.includes('payment_status')) {
+    db.exec("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'pendiente'");
+  }
+  if (!orderCols.includes('payment_id')) {
+    db.exec("ALTER TABLE orders ADD COLUMN payment_id TEXT DEFAULT NULL");
+  }
+
+  // Seed admin user
   const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@mercadito.com');
   if (!adminExists) {
     const hashedPassword = bcrypt.hashSync('admin123', 10);
-    db.prepare(`
-      INSERT INTO users (name, email, password, role)
-      VALUES (?, ?, ?, ?)
-    `).run('Administrador', 'admin@mercadito.com', hashedPassword, 'admin');
-    console.log('Admin user created: admin@mercadito.com / admin123');
+    db.prepare('INSERT INTO users (name, email, password, role, permissions) VALUES (?, ?, ?, ?, ?)')
+      .run('Administrador', 'admin@mercadito.com', hashedPassword, 'admin', null);
+    console.log('Admin created: admin@mercadito.com / admin123');
   }
 
-  // Seed categories if not exist
-  const categoriesExist = db.prepare('SELECT COUNT(*) as count FROM categories').get();
-  if (categoriesExist.count === 0) {
-    const insertCategory = db.prepare('INSERT INTO categories (id, name, slug, icon) VALUES (?, ?, ?, ?)');
-    const categories = [
-      [1, 'Frutas', 'frutas', '🍎'],
-      [2, 'Verduras', 'verduras', '🥦'],
-      [3, 'Bebidas', 'bebidas', '🥤'],
-      [4, 'Alimentos', 'alimentos', '🥫'],
-      [5, 'Mascotas', 'mascotas', '🐾'],
-      [6, 'Leña', 'lena', '🪵'],
-      [7, 'Limpieza', 'limpieza', '🧹'],
-    ];
-    categories.forEach(c => insertCategory.run(...c));
+  // Seed categories
+  const catCount = db.prepare('SELECT COUNT(*) as c FROM categories').get().c;
+  if (catCount === 0) {
+    const ic = db.prepare('INSERT INTO categories (id, name, slug, icon) VALUES (?, ?, ?, ?)');
+    [[1,'Frutas','frutas','frutas'],[2,'Verduras','verduras','verduras'],[3,'Bebidas','bebidas','bebidas'],
+     [4,'Alimentos','alimentos','alimentos'],[5,'Mascotas','mascotas','mascotas'],[6,'Lena','lena','lena'],
+     [7,'Limpieza','limpieza','limpieza']].forEach(r => ic.run(...r));
     console.log('Categories seeded');
   }
 
-  // Seed products if not exist
-  const productsExist = db.prepare('SELECT COUNT(*) as count FROM products').get();
-  if (productsExist.count === 0) {
-    const insertProduct = db.prepare(`
-      INSERT INTO products (name, price, stock, unit, category_id, active)
-      VALUES (?, ?, ?, ?, ?, 1)
-    `);
-    const products = [
-      ['Manzana', 120, 50, 'kg', 1],
-      ['Banana', 90, 80, 'kg', 1],
-      ['Naranja', 110, 60, 'kg', 1],
-      ['Uva', 180, 30, 'kg', 1],
-      ['Pera', 130, 40, 'kg', 1],
-      ['Durazno', 160, 35, 'kg', 1],
-      ['Frutilla', 250, 20, 'kg', 1],
-      ['Piña', 200, 25, 'unidad', 1],
-    ];
-    products.forEach(p => insertProduct.run(...p));
+  // Seed products
+  const prodCount = db.prepare('SELECT COUNT(*) as c FROM products').get().c;
+  if (prodCount === 0) {
+    const ip = db.prepare('INSERT INTO products (name, price, stock, unit, category_id, active) VALUES (?, ?, ?, ?, ?, 1)');
+    [
+      ['Banana',90,100,'kg',1],['Manzana',120,80,'kg',1],['Naranja',100,100,'kg',1],
+      ['Mandarina',95,80,'kg',1],['Pera',130,60,'kg',1],['Limon',80,120,'kg',1],
+      ['Frutilla',250,40,'kg',1],['Kiwi',200,50,'kg',1],['Uva',180,50,'kg',1],
+      ['Durazno',160,60,'kg',1],['Sandia',80,30,'kg',1],['Melon',110,25,'kg',1],
+      ['Pina',200,20,'unidad',1],
+      ['Papa',60,200,'kg',2],['Cebolla',70,150,'kg',2],['Tomate',110,100,'kg',2],
+      ['Zanahoria',80,120,'kg',2],['Lechuga',60,80,'unidad',2],['Morron',150,60,'kg',2],
+      ['Zapallito',90,70,'kg',2],['Calabaza',70,50,'kg',2],['Batata',75,100,'kg',2],
+      ['Ajo',400,50,'kg',2],['Brocoli',130,40,'unidad',2],['Repollo',80,50,'unidad',2],
+    ].forEach(p => ip.run(...p));
     console.log('Products seeded');
   }
 

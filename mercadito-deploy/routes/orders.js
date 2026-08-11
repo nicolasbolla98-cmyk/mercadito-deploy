@@ -21,7 +21,7 @@ function optionalAuth(req, res, next) {
 // POST /api/orders
 router.post('/', optionalAuth, (req, res) => {
   try {
-    const { customer_name, customer_email, customer_phone, customer_address, notes, items } = req.body;
+    const { customer_name, customer_email, customer_phone, customer_address, notes, items, payment_method } = req.body;
 
     if (!customer_name || !customer_email) {
       return res.status(400).json({ error: 'Nombre y email del cliente son requeridos' });
@@ -39,8 +39,8 @@ router.post('/', optionalAuth, (req, res) => {
       if (!product) {
         return res.status(400).json({ error: `Producto con id ${item.product_id} no encontrado` });
       }
-      const quantity = parseInt(item.quantity);
-      if (quantity < 1) {
+      const quantity = parseFloat(item.quantity);
+      if (quantity <= 0) {
         return res.status(400).json({ error: 'La cantidad debe ser mayor a 0' });
       }
       const subtotal = product.price * quantity;
@@ -57,8 +57,8 @@ router.post('/', optionalAuth, (req, res) => {
     // Create order in a transaction
     const createOrder = db.transaction(() => {
       const orderResult = db.prepare(`
-        INSERT INTO orders (user_id, customer_name, customer_email, customer_phone, customer_address, notes, total, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente')
+        INSERT INTO orders (user_id, customer_name, customer_email, customer_phone, customer_address, notes, total, status, payment_method)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', ?)
       `).run(
         req.user ? req.user.id : null,
         customer_name,
@@ -66,7 +66,8 @@ router.post('/', optionalAuth, (req, res) => {
         customer_phone || null,
         customer_address || null,
         notes || null,
-        total
+        total,
+        payment_method || 'efectivo'
       );
 
       const orderId = orderResult.lastInsertRowid;
