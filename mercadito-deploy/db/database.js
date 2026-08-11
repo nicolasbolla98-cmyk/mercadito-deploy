@@ -16,9 +16,9 @@ function initializeDatabase() {
       password TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'customer',
       permissions TEXT DEFAULT NULL,
+      credit_balance REAL NOT NULL DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
-
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -27,7 +27,6 @@ function initializeDatabase() {
       active INTEGER NOT NULL DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
-
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -41,7 +40,6 @@ function initializeDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories(id)
     );
-
     CREATE TABLE IF NOT EXISTS orders (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
@@ -58,7 +56,6 @@ function initializeDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
-
     CREATE TABLE IF NOT EXISTS order_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       order_id INTEGER NOT NULL,
@@ -72,45 +69,35 @@ function initializeDatabase() {
     );
   `);
 
-  // Migrate: add missing columns if they don't exist
+  // Migrations
   const userCols = db.pragma('table_info(users)').map(c => c.name);
-  if (!userCols.includes('permissions')) {
-    db.exec("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT NULL");
-  }
+  if (!userCols.includes('permissions'))     db.exec("ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT NULL");
+  if (!userCols.includes('credit_balance'))  db.exec("ALTER TABLE users ADD COLUMN credit_balance REAL NOT NULL DEFAULT 0");
 
   const orderCols = db.pragma('table_info(orders)').map(c => c.name);
-  if (!orderCols.includes('payment_method')) {
-    db.exec("ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'efectivo'");
-  }
-  if (!orderCols.includes('payment_status')) {
-    db.exec("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'pendiente'");
-  }
-  if (!orderCols.includes('payment_id')) {
-    db.exec("ALTER TABLE orders ADD COLUMN payment_id TEXT DEFAULT NULL");
-  }
+  if (!orderCols.includes('payment_method')) db.exec("ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'efectivo'");
+  if (!orderCols.includes('payment_status')) db.exec("ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'pendiente'");
+  if (!orderCols.includes('payment_id'))     db.exec("ALTER TABLE orders ADD COLUMN payment_id TEXT DEFAULT NULL");
 
-  // Seed admin user
-  const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@mercadito.com');
-  if (!adminExists) {
-    const hashedPassword = bcrypt.hashSync('admin123', 10);
+  // Seed admin
+  if (!db.prepare('SELECT id FROM users WHERE email = ?').get('admin@mercadito.com')) {
+    const hash = bcrypt.hashSync('admin123', 10);
     db.prepare('INSERT INTO users (name, email, password, role, permissions) VALUES (?, ?, ?, ?, ?)')
-      .run('Administrador', 'admin@mercadito.com', hashedPassword, 'admin', null);
+      .run('Administrador', 'admin@mercadito.com', hash, 'admin', null);
     console.log('Admin created: admin@mercadito.com / admin123');
   }
 
   // Seed categories
-  const catCount = db.prepare('SELECT COUNT(*) as c FROM categories').get().c;
-  if (catCount === 0) {
+  if (db.prepare('SELECT COUNT(*) as c FROM categories').get().c === 0) {
     const ic = db.prepare('INSERT INTO categories (id, name, slug, icon) VALUES (?, ?, ?, ?)');
-    [[1,'Frutas','frutas','frutas'],[2,'Verduras','verduras','verduras'],[3,'Bebidas','bebidas','bebidas'],
-     [4,'Alimentos','alimentos','alimentos'],[5,'Mascotas','mascotas','mascotas'],[6,'Lena','lena','lena'],
-     [7,'Limpieza','limpieza','limpieza']].forEach(r => ic.run(...r));
+    [[1,'Frutas','frutas','🍎'],[2,'Verduras','verduras','🥦'],[3,'Bebidas','bebidas','🥤'],
+     [4,'Alimentos','alimentos','🥫'],[5,'Mascotas','mascotas','🐾'],[6,'Lena','lena','🪵'],
+     [7,'Limpieza','limpieza','🧹']].forEach(r => ic.run(...r));
     console.log('Categories seeded');
   }
 
   // Seed products
-  const prodCount = db.prepare('SELECT COUNT(*) as c FROM products').get().c;
-  if (prodCount === 0) {
+  if (db.prepare('SELECT COUNT(*) as c FROM products').get().c === 0) {
     const ip = db.prepare('INSERT INTO products (name, price, stock, unit, category_id, active) VALUES (?, ?, ?, ?, ?, 1)');
     [
       ['Banana',90,100,'kg',1],['Manzana',120,80,'kg',1],['Naranja',100,100,'kg',1],

@@ -82,7 +82,7 @@ router.post('/login', (req, res) => {
 // GET /api/auth/me
 router.get('/me', authenticateToken, (req, res) => {
   try {
-    const user = db.prepare('SELECT id, name, email, phone, role, created_at FROM users WHERE id = ?').get(req.user.id);
+    const user = db.prepare('SELECT id, name, email, phone, role, permissions, credit_balance, created_at FROM users WHERE id = ?').get(req.user.id);
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
