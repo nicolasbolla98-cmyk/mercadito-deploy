@@ -1,0 +1,8 @@
+node_modules/
+server/node_modules/
+client/node_modules/
+server/db/mercadito.db
+.DS_Store
+*.env
+.env
+client/dist/
