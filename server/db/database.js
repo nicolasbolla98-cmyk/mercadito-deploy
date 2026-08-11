@@ -2,7 +2,8 @@ const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
-const db = new Database(path.join(__dirname, 'mercadito.db'));
+const dbPath = process.env.DB_PATH || path.join(__dirname, 'mercadito.db');
+const db = new Database(dbPath);
 
 function initializeDatabase() {
   db.pragma('journal_mode = WAL');
