@@ -1,117 +1,125 @@
-                                                                              
-  const express = require('express');                                           
-  const router = express.Router();                                              
-  const bcrypt = require('bcryptjs');                                           
-  const jwt = require('jsonwebtoken');
-  const { db } = require('../db/database');                                     
-  const { authenticateToken } = require('../middleware/auth');                  
-                                                                                
-  router.post('/register', (req, res) => {
-    try {                                                                     
-      const { name, email, phone, password } = req.body;                        
-      if (!name || !email || !password) {
-        return res.status(400).json({ error: 'Nombre, email y contraseña son    
-  requeridos' });                             
-      }                                                                       
-      if (password.length < 6) {
-        return res.status(400).json({ error: 'La contraseña debe tener al menos 
-  6 caracteres' });
-      }                                                                         
-      const existingUser = db.prepare('SELECT id FROM users WHERE email = 
-  ?').get(email);                                                             
-      if (existingUser) {                 
-        return res.status(400).json({ error: 'Ya existe una cuenta con ese 
-  email' });                                                                    
-      }
-      const hashedPassword = bcrypt.hashSync(password, 10);                     
-      const result = db.prepare(`
-        INSERT INTO users (name, email, phone, password, role)                
-        VALUES (?, ?, ?, ?, 'customer')   
-      `).run(name, email, phone || null, hashedPassword);
-      const user = db.prepare('SELECT id, name, email, phone, role, created_at  
-  FROM users WHERE id = ?').get(result.lastInsertRowid);
-      const token = jwt.sign(                                                   
-        { id: user.id, email: user.email, role: user.role },
-        process.env.JWT_SECRET,                                                 
-        { expiresIn: '7d' }
-      );                                                                        
-      res.status(201).json({ token, user });
-    } catch (error) {                                                         
-      console.error('Register error:', error);                                  
-      res.status(500).json({ error: 'Error al crear la cuenta' });
-    }                                                                           
-  });             
-                                                                              
-  router.post('/login', (req, res) => {       
-    try {                                 
-      const { email, password } = req.body;
-      if (!email || !password) {                                                
-        return res.status(400).json({ error: 'Email y contraseña son requeridos'
-   });                                                                          
-      }           
-      const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-      if (!user) {                            
-        return res.status(401).json({ error: 'Email o contraseña incorrectos'
-  });
-      }                                                                         
-      const validPassword = bcrypt.compareSync(password, user.password);
-      if (!validPassword) {                                                     
-        return res.status(401).json({ error: 'Email o contraseña incorrectos'
-  });                                                                         
-      }                                   
-      const token = jwt.sign(
-        { id: user.id, email: user.email, role: user.role },                    
-        process.env.JWT_SECRET,
-        { expiresIn: '7d' }                                                     
-      );          
-      const { password: _, ...userWithoutPassword } = user;                   
-      res.json({ token, user: userWithoutPassword });
-    } catch (error) {                     
-      console.error('Login error:', error);
-      res.status(500).json({ error: 'Error al iniciar sesión' });               
-    }
-  });                                                                           
-                  
-  router.get('/me', authenticateToken, (req, res) => {                        
-    try {                                 
-      const user = db.prepare('SELECT id, name, email, phone, role, created_at 
-  FROM users WHERE id = ?').get(req.user.id);                                   
-      if (!user) {
-        return res.status(404).json({ error: 'Usuario no encontrado' });        
-      }                                       
-      res.json({ user });                                                     
-    } catch (error) {
-      console.error('Me error:', error);                                        
-      res.status(500).json({ error: 'Error al obtener usuario' });
-    }                                                                           
-  });             
-                                                                              
-  router.put('/change-password', authenticateToken, (req, res) => {
-    try {                                 
-      const { currentPassword, newPassword } = req.body;
-      if (!currentPassword || !newPassword) {                                   
-        return res.status(400).json({ error: 'Completá todos los campos' });
-      }                                                                         
-      if (newPassword.length < 6) {
-        return res.status(400).json({ error: 'La nueva contraseña debe tener al 
-  menos 6 caracteres' });                     
-      }                                   
-      const user = db.prepare('SELECT * FROM users WHERE id = 
-  ?').get(req.user.id);                                                         
-      if (!user) return res.status(404).json({ error: 'Usuario no encontrado'
-  });                                                                           
-      const valid = bcrypt.compareSync(currentPassword, user.password);
-      if (!valid) return res.status(401).json({ error: 'La contraseña actual es 
-  incorrecta' });                                                               
-      const hashed = bcrypt.hashSync(newPassword, 10);
-      db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashed,      
-  req.user.id);                           
-      res.json({ message: 'Contraseña actualizada correctamente' });          
-    } catch (error) {                                                           
-      console.error('Change password error:', error);
-      res.status(500).json({ error: 'Error al cambiar la contraseña' });        
-    }                                         
-  });                                                                         
+const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
+const path = require('path');
 
-  module.exports = router;                                                      
-   
+const db = new Database(path.join(__dirname, 'mercadito.db'));
+
+function initializeDatabase() {
+  // Enable WAL mode for better performance
+  db.pragma('journal_mode = WAL');
+
+  // Create tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT,
+      password TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'customer',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      slug TEXT UNIQUE NOT NULL,
+      icon TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      price REAL NOT NULL,
+      stock INTEGER NOT NULL DEFAULT 0,
+      unit TEXT NOT NULL DEFAULT 'kg',
+      category_id INTEGER,
+      image_url TEXT,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      customer_name TEXT NOT NULL,
+      customer_email TEXT NOT NULL,
+      customer_phone TEXT,
+      customer_address TEXT,
+      notes TEXT,
+      total REAL NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pendiente',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL,
+      product_name TEXT NOT NULL,
+      product_price REAL NOT NULL,
+      quantity INTEGER NOT NULL,
+      subtotal REAL NOT NULL,
+      FOREIGN KEY (order_id) REFERENCES orders(id),
+      FOREIGN KEY (product_id) REFERENCES products(id)
+    );
+  `);
+
+  // Seed admin user if not exists
+  const adminExists = db.prepare('SELECT id FROM users WHERE email = ?').get('admin@mercadito.com');
+  if (!adminExists) {
+    const hashedPassword = bcrypt.hashSync('admin123', 10);
+    db.prepare(`
+      INSERT INTO users (name, email, password, role)
+      VALUES (?, ?, ?, ?)
+    `).run('Administrador', 'admin@mercadito.com', hashedPassword, 'admin');
+    console.log('Admin user created: admin@mercadito.com / admin123');
+  }
+
+  // Seed categories if not exist
+  const categoriesExist = db.prepare('SELECT COUNT(*) as count FROM categories').get();
+  if (categoriesExist.count === 0) {
+    const insertCategory = db.prepare('INSERT INTO categories (id, name, slug, icon) VALUES (?, ?, ?, ?)');
+    const categories = [
+      [1, 'Frutas', 'frutas', '🍎'],
+      [2, 'Verduras', 'verduras', '🥦'],
+      [3, 'Bebidas', 'bebidas', '🥤'],
+      [4, 'Alimentos', 'alimentos', '🥫'],
+      [5, 'Mascotas', 'mascotas', '🐾'],
+      [6, 'Leña', 'lena', '🪵'],
+      [7, 'Limpieza', 'limpieza', '🧹'],
+    ];
+    categories.forEach(c => insertCategory.run(...c));
+    console.log('Categories seeded');
+  }
+
+  // Seed products if not exist
+  const productsExist = db.prepare('SELECT COUNT(*) as count FROM products').get();
+  if (productsExist.count === 0) {
+    const insertProduct = db.prepare(`
+      INSERT INTO products (name, price, stock, unit, category_id, active)
+      VALUES (?, ?, ?, ?, ?, 1)
+    `);
+    const products = [
+      ['Manzana', 120, 50, 'kg', 1],
+      ['Banana', 90, 80, 'kg', 1],
+      ['Naranja', 110, 60, 'kg', 1],
+      ['Uva', 180, 30, 'kg', 1],
+      ['Pera', 130, 40, 'kg', 1],
+      ['Durazno', 160, 35, 'kg', 1],
+      ['Frutilla', 250, 20, 'kg', 1],
+      ['Piña', 200, 25, 'unidad', 1],
+    ];
+    products.forEach(p => insertProduct.run(...p));
+    console.log('Products seeded');
+  }
+
+  console.log('Database initialized successfully');
+}
+
+module.exports = { db, initializeDatabase };
