@@ -53,6 +53,7 @@ function UnitSelector({ value, onChange, unit }) {
         type="number"
         min={1}
         value={value}
+        onFocus={e => e.target.select()}
         onChange={e => {
           const v = parseInt(e.target.value)
           if (!isNaN(v) && v >= 1) onChange(v)
