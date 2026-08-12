@@ -64,7 +64,7 @@ function UnitSelector({ value, onChange, unit }) {
           else { onChange(1); setDisplay('1') }
         }}
         onChange={e => setDisplay(e.target.value)}
-        style={{ width: 80, padding: '0.4rem 0.6rem', fontSize: '0.9rem', fontWeight: 600, borderRadius: 8, border: '2px solid #e5e7eb', fontFamily: 'Poppins, sans-serif', textAlign: 'center' }}
+        style={{ width: 64, minWidth: 0, flex: '0 0 64px', padding: '0.4rem 0.3rem', fontSize: '0.9rem', fontWeight: 600, borderRadius: 8, border: '2px solid #e5e7eb', fontFamily: 'Poppins, sans-serif', textAlign: 'center', boxSizing: 'border-box' }}
       />
       <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>{unit}</span>
     </div>
