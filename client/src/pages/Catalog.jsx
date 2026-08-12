@@ -29,31 +29,18 @@ function SkeletonCard() {
 
 function KgSelector({ value, onChange }) {
   return (
-    <div style={{ marginBottom: '0.75rem' }}>
-      <div style={{ fontSize: '0.8rem', color: 'var(--gray)', marginBottom: '0.4rem', fontWeight: 500 }}>Cantidad:</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+      <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontWeight: 500 }}>Cantidad:</span>
+      <select
+        value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        className="form-select"
+        style={{ flex: 1, padding: '0.4rem 0.6rem', fontSize: '0.85rem', fontWeight: 600, borderRadius: 8, border: '2px solid #e5e7eb', fontFamily: 'Poppins, sans-serif' }}
+      >
         {KG_OPTIONS.map(kg => (
-          <button
-            key={kg}
-            type="button"
-            onClick={() => onChange(kg)}
-            style={{
-              padding: '0.28rem 0.55rem',
-              borderRadius: '6px',
-              border: `2px solid ${value === kg ? 'var(--green)' : '#e5e7eb'}`,
-              background: value === kg ? 'var(--green)' : 'white',
-              color: value === kg ? 'white' : 'var(--dark)',
-              cursor: 'pointer',
-              fontFamily: 'Poppins, sans-serif',
-              fontWeight: 600,
-              fontSize: '0.75rem',
-              transition: 'all 0.15s',
-            }}
-          >
-            {kg % 1 === 0 ? `${kg}` : `${kg}`} kg
-          </button>
+          <option key={kg} value={kg}>{kg} kg</option>
         ))}
-      </div>
+      </select>
     </div>
   )
 }
@@ -62,11 +49,17 @@ function UnitSelector({ value, onChange, unit }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
       <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontWeight: 500 }}>Cantidad:</span>
-      <div className="quantity-controls" style={{ margin: 0 }}>
-        <button className="qty-btn" type="button" onClick={() => onChange(Math.max(1, value - 1))}>−</button>
-        <span className="qty-display">{value} {unit}</span>
-        <button className="qty-btn" type="button" onClick={() => onChange(value + 1)}>+</button>
-      </div>
+      <input
+        type="number"
+        min={1}
+        value={value}
+        onChange={e => {
+          const v = parseInt(e.target.value)
+          if (!isNaN(v) && v >= 1) onChange(v)
+        }}
+        style={{ width: 80, padding: '0.4rem 0.6rem', fontSize: '0.9rem', fontWeight: 600, borderRadius: 8, border: '2px solid #e5e7eb', fontFamily: 'Poppins, sans-serif', textAlign: 'center' }}
+      />
+      <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>{unit}</span>
     </div>
   )
 }
