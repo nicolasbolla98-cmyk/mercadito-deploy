@@ -186,40 +186,37 @@ export default function Catalog() {
                     <div className="product-info">
                       <div className="product-name">{product.name}</div>
 
-                      {/* Mode toggle: kg / cajón */}
-                      {hasCajon && (
-                        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.6rem' }}>
-                          <button
-                            type="button"
-                            onClick={() => setMode(product.id, 'kg')}
-                            style={{
-                              flex: 1, padding: '0.3rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700,
-                              border: `2px solid ${mode === 'kg' ? 'var(--green)' : '#e5e7eb'}`,
-                              background: mode === 'kg' ? 'var(--green)' : 'white',
-                              color: mode === 'kg' ? 'white' : 'var(--dark)', cursor: 'pointer'
-                            }}
-                          >
-                            Por kg
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setMode(product.id, 'cajon')}
-                            style={{
-                              flex: 1, padding: '0.3rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700,
-                              border: `2px solid ${mode === 'cajon' ? 'var(--green)' : '#e5e7eb'}`,
-                              background: mode === 'cajon' ? 'var(--green)' : 'white',
-                              color: mode === 'cajon' ? 'white' : 'var(--dark)', cursor: 'pointer'
-                            }}
-                          >
-                            Por cajon
-                          </button>
+                      {/* Precios visibles */}
+                      {hasCajon ? (
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
+                            <span style={{ fontSize: '0.82rem', background: '#f0fdf4', color: 'var(--green-dark)', borderRadius: 6, padding: '0.2rem 0.5rem', fontWeight: 700 }}>
+                              ${Number(product.price).toLocaleString('es-UY')} / kg
+                            </span>
+                            <span style={{ fontSize: '0.82rem', background: '#eff6ff', color: '#1d4ed8', borderRadius: 6, padding: '0.2rem 0.5rem', fontWeight: 700 }}>
+                              ${Number(product.cajon_price).toLocaleString('es-UY')} / cajón
+                            </span>
+                          </div>
+                          {/* Toggle kg / cajón */}
+                          <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem' }}>
+                            <button type="button" onClick={() => setMode(product.id, 'kg')} style={{ flex: 1, padding: '0.3rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, border: `2px solid ${mode === 'kg' ? 'var(--green)' : '#e5e7eb'}`, background: mode === 'kg' ? 'var(--green)' : 'white', color: mode === 'kg' ? 'white' : 'var(--dark)', cursor: 'pointer' }}>
+                              Por kg
+                            </button>
+                            <button type="button" onClick={() => setMode(product.id, 'cajon')} style={{ flex: 1, padding: '0.3rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, border: `2px solid ${mode === 'cajon' ? 'var(--green)' : '#e5e7eb'}`, background: mode === 'cajon' ? 'var(--green)' : 'white', color: mode === 'cajon' ? 'white' : 'var(--dark)', cursor: 'pointer' }}>
+                              Por cajón
+                            </button>
+                          </div>
+                          <div className="product-price" style={{ fontSize: '1.1rem' }}>
+                            ${displayPrice?.toLocaleString('es-UY')}
+                            <span className="product-unit"> / {mode === 'cajon' ? 'cajón' : product.unit}</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="product-price">
+                          ${displayPrice?.toLocaleString('es-UY')}
+                          <span className="product-unit"> / {product.unit}</span>
                         </div>
                       )}
-
-                      <div className="product-price">
-                        ${displayPrice?.toLocaleString('es-UY')}
-                        <span className="product-unit"> / {mode === 'cajon' ? 'cajon' : product.unit}</span>
-                      </div>
 
                       {product.description && (
                         <div style={{ fontSize: '0.82rem', color: 'var(--gray)', margin: '0.35rem 0 0.5rem' }}>{product.description}</div>
