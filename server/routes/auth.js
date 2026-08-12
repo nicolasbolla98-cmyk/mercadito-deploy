@@ -2,15 +2,14 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { db } = require('../db/database');
+const { pool } = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 
 // POST /api/auth/register
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
-    // Validate required fields
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Nombre, email y contraseña son requeridos' });
     }
@@ -18,20 +17,22 @@ router.post('/register', (req, res) => {
       return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
-    // Check if email already exists
-    const existingUser = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+    const existingUser = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
     if (existingUser) {
       return res.status(400).json({ error: 'Ya existe una cuenta con ese email' });
     }
 
-    // Hash password and create user
     const hashedPassword = bcrypt.hashSync(password, 10);
-    const result = db.prepare(`
-      INSERT INTO users (name, email, phone, password, role)
-      VALUES (?, ?, ?, ?, 'customer')
-    `).run(name, email, phone || null, hashedPassword);
+    const insertResult = await pool.query(
+      `INSERT INTO users (name, email, phone, password, role) VALUES ($1, $2, $3, $4, 'customer') RETURNING id`,
+      [name, email, phone || null, hashedPassword]
+    );
+    const newId = insertResult.rows[0].id;
 
-    const user = db.prepare('SELECT id, name, email, phone, role, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
+    const user = (await pool.query(
+      'SELECT id, name, email, phone, role, created_at FROM users WHERE id = $1',
+      [newId]
+    )).rows[0];
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
@@ -47,7 +48,7 @@ router.post('/register', (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -55,7 +56,7 @@ router.post('/login', (req, res) => {
       return res.status(400).json({ error: 'Email y contraseña son requeridos' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const user = (await pool.query('SELECT * FROM users WHERE email = $1', [email])).rows[0];
     if (!user) {
       return res.status(401).json({ error: 'Email o contraseña incorrectos' });
     }
@@ -80,9 +81,12 @@ router.post('/login', (req, res) => {
 });
 
 // GET /api/auth/me
-router.get('/me', authenticateToken, (req, res) => {
+router.get('/me', authenticateToken, async (req, res) => {
   try {
-    const user = db.prepare('SELECT id, name, email, phone, role, permissions, credit_balance, created_at FROM users WHERE id = ?').get(req.user.id);
+    const user = (await pool.query(
+      'SELECT id, name, email, phone, role, permissions, credit_balance, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    )).rows[0];
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
@@ -94,7 +98,7 @@ router.get('/me', authenticateToken, (req, res) => {
 });
 
 // PUT /api/auth/change-password
-router.put('/change-password', authenticateToken, (req, res) => {
+router.put('/change-password', authenticateToken, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
@@ -105,14 +109,14 @@ router.put('/change-password', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    const user = (await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id])).rows[0];
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
     const valid = bcrypt.compareSync(currentPassword, user.password);
     if (!valid) return res.status(401).json({ error: 'La contraseña actual es incorrecta' });
 
     const hashed = bcrypt.hashSync(newPassword, 10);
-    db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashed, req.user.id);
+    await pool.query('UPDATE users SET password = $1 WHERE id = $2', [hashed, req.user.id]);
 
     res.json({ message: 'Contraseña actualizada correctamente' });
   } catch (error) {

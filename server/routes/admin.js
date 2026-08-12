@@ -1,59 +1,68 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const { db } = require('../db/database');
+const { pool } = require('../db/database');
 const { authenticateToken, requireAdmin, requirePermission } = require('../middleware/auth');
 
 router.use(authenticateToken, requireAdmin);
 
 // ── STATS ──────────────────────────────────────────────
-router.get('/stats', (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
-    const totalOrders    = db.prepare('SELECT COUNT(*) as c FROM orders').get().c;
-    const totalRevenue   = db.prepare("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado'").get().s;
-    const totalCustomers = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'customer'").get().c;
-    const totalProducts  = db.prepare('SELECT COUNT(*) as c FROM products WHERE active = 1').get().c;
-    const recentOrders   = db.prepare('SELECT id,customer_name,customer_email,total,status,payment_status,payment_method,created_at FROM orders ORDER BY created_at DESC LIMIT 5').all();
+    const totalOrders    = (await pool.query('SELECT COUNT(*) as c FROM orders')).rows[0].c;
+    const totalRevenue   = (await pool.query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado'")).rows[0].s;
+    const totalCustomers = (await pool.query("SELECT COUNT(*) as c FROM users WHERE role = 'customer'")).rows[0].c;
+    const totalProducts  = (await pool.query('SELECT COUNT(*) as c FROM products WHERE active = 1')).rows[0].c;
+    const recentOrders   = (await pool.query('SELECT id,customer_name,customer_email,total,status,payment_status,payment_method,created_at FROM orders ORDER BY created_at DESC LIMIT 5')).rows;
     res.json({ totalOrders, totalRevenue, totalCustomers, totalProducts, recentOrders });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
 });
 
 // ── ORDERS ─────────────────────────────────────────────
-router.get('/orders', (req, res) => {
+router.get('/orders', async (req, res) => {
   try {
     const { status, payment_status } = req.query;
     let q = 'SELECT o.*, u.name as user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE 1=1';
     const params = [];
-    if (status)         { q += ' AND o.status = ?';         params.push(status); }
-    if (payment_status) { q += ' AND o.payment_status = ?'; params.push(payment_status); }
+    let paramIdx = 1;
+    if (status)         { q += ` AND o.status = $${paramIdx++}`;         params.push(status); }
+    if (payment_status) { q += ` AND o.payment_status = $${paramIdx++}`; params.push(payment_status); }
     q += ' ORDER BY o.created_at DESC';
-    res.json(db.prepare(q).all(...params));
+    const rows = (await pool.query(q, params)).rows;
+    res.json(rows);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
 });
 
-router.get('/orders/:id', (req, res) => {
+router.get('/orders/:id', async (req, res) => {
   try {
-    const order = db.prepare('SELECT o.*, u.name as user_name, u.id as user_id_ref FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.id = ?').get(req.params.id);
+    const order = (await pool.query(
+      'SELECT o.*, u.name as user_name, u.id as user_id_ref FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.id = $1',
+      [req.params.id]
+    )).rows[0];
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
-    const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+    const items = (await pool.query('SELECT * FROM order_items WHERE order_id = $1', [order.id])).rows;
     res.json({ ...order, items });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
 });
 
-router.patch('/orders/:id/status', (req, res) => {
+router.patch('/orders/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    const valid = ['pendiente','confirmado','en_preparacion','enviado','entregado','cancelado'];
+    const valid = ['pendiente', 'confirmado', 'en_preparacion', 'enviado', 'entregado', 'cancelado'];
     if (!status || !valid.includes(status)) return res.status(400).json({ error: 'Estado invalido' });
-    db.prepare('UPDATE orders SET status = ? WHERE id = ?').run(status, req.params.id);
-    const order = db.prepare('SELECT o.*, u.name as user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.id = ?').get(req.params.id);
-    const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(req.params.id);
+    await pool.query('UPDATE orders SET status = $1 WHERE id = $2', [status, req.params.id]);
+    const order = (await pool.query(
+      'SELECT o.*, u.name as user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.id = $1',
+      [req.params.id]
+    )).rows[0];
+    const items = (await pool.query('SELECT * FROM order_items WHERE order_id = $1', [req.params.id])).rows;
     res.json({ ...order, items });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
 });
 
 // Marcar pago manualmente (uno o varios pedidos)
-router.post('/orders/confirm-payment', (req, res) => {
+router.post('/orders/confirm-payment', async (req, res) => {
+  const client = await pool.connect();
   try {
     const { order_ids, payment_method } = req.body;
     if (!Array.isArray(order_ids) || order_ids.length === 0) return res.status(400).json({ error: 'order_ids requeridos' });
@@ -63,189 +72,230 @@ router.post('/orders/confirm-payment', (req, res) => {
 
     // Si es credito, necesitamos descontar del saldo del cliente
     if (method === 'credito') {
-      // Agrupamos por usuario para descontar el credito
       const userTotals = {};
       for (const id of order_ids) {
-        const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+        const order = (await pool.query('SELECT * FROM orders WHERE id = $1', [id])).rows[0];
         if (order && order.user_id && order.payment_status !== 'pagado') {
           userTotals[order.user_id] = (userTotals[order.user_id] || 0) + order.total;
         }
       }
       for (const [userId, totalDebt] of Object.entries(userTotals)) {
-        const user = db.prepare('SELECT credit_balance FROM users WHERE id = ?').get(userId);
+        const user = (await pool.query('SELECT credit_balance FROM users WHERE id = $1', [userId])).rows[0];
         if (!user || user.credit_balance < totalDebt) {
-          return res.status(400).json({ error: `Credito insuficiente para el cliente #${String(userId).padStart(5,'0')}` });
+          return res.status(400).json({ error: `Credito insuficiente para el cliente #${String(userId).padStart(5, '0')}` });
         }
-        db.prepare('UPDATE users SET credit_balance = credit_balance - ? WHERE id = ?').run(totalDebt, userId);
+        await client.query('UPDATE users SET credit_balance = credit_balance - $1 WHERE id = $2', [totalDebt, userId]);
       }
     }
 
-    const stmt = db.prepare("UPDATE orders SET payment_status = 'pagado', payment_method = ?, status = CASE WHEN status = 'pendiente' THEN 'confirmado' ELSE status END WHERE id = ? AND payment_status != 'pagado'");
-    for (const id of order_ids) stmt.run(method, id);
+    await client.query('BEGIN');
+    for (const id of order_ids) {
+      await client.query(
+        `UPDATE orders SET payment_status = 'pagado', payment_method = $1, status = CASE WHEN status = 'pendiente' THEN 'confirmado' ELSE status END WHERE id = $2 AND payment_status != 'pagado'`,
+        [method, id]
+      );
+    }
+    await client.query('COMMIT');
 
     res.json({ message: `${order_ids.length} pedido(s) marcado(s) como pagado(s)` });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Error al confirmar pago' }); }
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: 'Error al confirmar pago' });
+  } finally {
+    client.release();
+  }
 });
 
 // ── CUSTOMERS ──────────────────────────────────────────
-router.get('/users', (req, res) => {
+router.get('/users', async (req, res) => {
   try {
-    const users = db.prepare(`
+    const users = (await pool.query(`
       SELECT u.id, u.name, u.email, u.phone, u.credit_balance, u.created_at,
              COUNT(o.id) as order_count,
              COALESCE(SUM(CASE WHEN o.payment_status != 'pagado' AND o.status != 'cancelado' THEN o.total ELSE 0 END), 0) as deuda_total
       FROM users u LEFT JOIN orders o ON u.id = o.user_id
       WHERE u.role = 'customer'
       GROUP BY u.id ORDER BY u.created_at DESC
-    `).all();
+    `)).rows;
     res.json(users);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
 });
 
 // Ajustar credito de un cliente
-router.patch('/users/:id/credit', requirePermission('customers'), (req, res) => {
+router.patch('/users/:id/credit', requirePermission('customers'), async (req, res) => {
   try {
-    const { amount, operation } = req.body; // operation: 'set' | 'add' | 'subtract'
+    const { amount, operation } = req.body;
     const value = parseFloat(amount);
     if (isNaN(value) || value < 0) return res.status(400).json({ error: 'Monto invalido' });
 
-    const user = db.prepare("SELECT id, credit_balance FROM users WHERE id = ? AND role = 'customer'").get(req.params.id);
+    const user = (await pool.query("SELECT id, credit_balance FROM users WHERE id = $1 AND role = 'customer'", [req.params.id])).rows[0];
     if (!user) return res.status(404).json({ error: 'Cliente no encontrado' });
 
     if (operation === 'add') {
-      db.prepare('UPDATE users SET credit_balance = credit_balance + ? WHERE id = ?').run(value, req.params.id);
+      await pool.query('UPDATE users SET credit_balance = credit_balance + $1 WHERE id = $2', [value, req.params.id]);
     } else if (operation === 'subtract') {
       const newBalance = Math.max(0, user.credit_balance - value);
-      db.prepare('UPDATE users SET credit_balance = ? WHERE id = ?').run(newBalance, req.params.id);
+      await pool.query('UPDATE users SET credit_balance = $1 WHERE id = $2', [newBalance, req.params.id]);
     } else {
-      db.prepare('UPDATE users SET credit_balance = ? WHERE id = ?').run(value, req.params.id);
+      await pool.query('UPDATE users SET credit_balance = $1 WHERE id = $2', [value, req.params.id]);
     }
 
-    const updated = db.prepare('SELECT id, name, email, credit_balance FROM users WHERE id = ?').get(req.params.id);
+    const updated = (await pool.query('SELECT id, name, email, credit_balance FROM users WHERE id = $1', [req.params.id])).rows[0];
     res.json(updated);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error al actualizar credito' }); }
 });
 
-// Pedidos pendientes de un cliente
-router.get('/users/:id/orders', (req, res) => {
+// Pedidos de un cliente
+router.get('/users/:id/orders', async (req, res) => {
   try {
-    const orders = db.prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC").all(req.params.id);
+    const orders = (await pool.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', [req.params.id])).rows;
     res.json(orders);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
 });
 
 // ── CATEGORIES ─────────────────────────────────────────
-router.get('/categories', (req, res) => {
-  try { res.json(db.prepare('SELECT * FROM categories ORDER BY id').all()); }
-  catch (e) { res.status(500).json({ error: 'Error' }); }
-});
-
-router.post('/categories', requirePermission('categories'), (req, res) => {
+router.get('/categories', async (req, res) => {
   try {
-    const { name, slug, icon, active } = req.body;
-    if (!name || !slug) return res.status(400).json({ error: 'Nombre y slug son requeridos' });
-    if (db.prepare('SELECT id FROM categories WHERE slug = ?').get(slug)) return res.status(400).json({ error: 'Slug ya existe' });
-    const r = db.prepare('INSERT INTO categories (name, slug, icon, active) VALUES (?, ?, ?, ?)').run(name, slug, icon || '', active !== false ? 1 : 0);
-    res.status(201).json(db.prepare('SELECT * FROM categories WHERE id = ?').get(r.lastInsertRowid));
+    const rows = (await pool.query('SELECT * FROM categories ORDER BY id')).rows;
+    res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
-router.put('/categories/:id', requirePermission('categories'), (req, res) => {
+router.post('/categories', requirePermission('categories'), async (req, res) => {
   try {
     const { name, slug, icon, active } = req.body;
     if (!name || !slug) return res.status(400).json({ error: 'Nombre y slug son requeridos' });
-    db.prepare('UPDATE categories SET name=?, slug=?, icon=?, active=? WHERE id=?').run(name, slug, icon || '', active ? 1 : 0, req.params.id);
-    res.json(db.prepare('SELECT * FROM categories WHERE id = ?').get(req.params.id));
+    const existing = (await pool.query('SELECT id FROM categories WHERE slug = $1', [slug])).rows[0];
+    if (existing) return res.status(400).json({ error: 'Slug ya existe' });
+    const result = await pool.query(
+      'INSERT INTO categories (name, slug, icon, active) VALUES ($1, $2, $3, $4) RETURNING id',
+      [name, slug, icon || '', active !== false ? 1 : 0]
+    );
+    const category = (await pool.query('SELECT * FROM categories WHERE id = $1', [result.rows[0].id])).rows[0];
+    res.status(201).json(category);
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
-router.delete('/categories/:id', requirePermission('categories'), (req, res) => {
+router.put('/categories/:id', requirePermission('categories'), async (req, res) => {
   try {
-    if (db.prepare('SELECT COUNT(*) as c FROM products WHERE category_id = ?').get(req.params.id).c > 0)
-      return res.status(400).json({ error: 'Tiene productos asignados' });
-    db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
+    const { name, slug, icon, active } = req.body;
+    if (!name || !slug) return res.status(400).json({ error: 'Nombre y slug son requeridos' });
+    await pool.query(
+      'UPDATE categories SET name=$1, slug=$2, icon=$3, active=$4 WHERE id=$5',
+      [name, slug, icon || '', active ? 1 : 0, req.params.id]
+    );
+    const category = (await pool.query('SELECT * FROM categories WHERE id = $1', [req.params.id])).rows[0];
+    res.json(category);
+  } catch (e) { res.status(500).json({ error: 'Error' }); }
+});
+
+router.delete('/categories/:id', requirePermission('categories'), async (req, res) => {
+  try {
+    const count = (await pool.query('SELECT COUNT(*) as c FROM products WHERE category_id = $1', [req.params.id])).rows[0].c;
+    if (parseInt(count, 10) > 0) return res.status(400).json({ error: 'Tiene productos asignados' });
+    await pool.query('DELETE FROM categories WHERE id = $1', [req.params.id]);
     res.json({ message: 'Eliminada' });
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
 // ── ADMINS ─────────────────────────────────────────────
-router.get('/admins', requirePermission('admins'), (req, res) => {
+router.get('/admins', requirePermission('admins'), async (req, res) => {
   try {
-    res.json(db.prepare("SELECT id,name,email,phone,permissions,created_at FROM users WHERE role='admin' ORDER BY created_at").all());
+    const rows = (await pool.query("SELECT id,name,email,phone,permissions,created_at FROM users WHERE role='admin' ORDER BY created_at")).rows;
+    res.json(rows);
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
-router.post('/admins', requirePermission('admins'), (req, res) => {
+router.post('/admins', requirePermission('admins'), async (req, res) => {
   try {
     const { name, email, password, permissions } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'Nombre, email y contrasena son requeridos' });
     if (password.length < 6) return res.status(400).json({ error: 'Contrasena min 6 caracteres' });
-    if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) return res.status(400).json({ error: 'Email ya existe' });
+    const existing = (await pool.query('SELECT id FROM users WHERE email = $1', [email])).rows[0];
+    if (existing) return res.status(400).json({ error: 'Email ya existe' });
     const hash = bcrypt.hashSync(password, 10);
     const perms = permissions && permissions !== 'all' ? JSON.stringify(permissions) : null;
-    const r = db.prepare('INSERT INTO users (name, email, password, role, permissions) VALUES (?, ?, ?, ?, ?)').run(name, email, hash, 'admin', perms);
-    res.status(201).json(db.prepare('SELECT id,name,email,phone,permissions,created_at FROM users WHERE id = ?').get(r.lastInsertRowid));
+    const result = await pool.query(
+      'INSERT INTO users (name, email, password, role, permissions) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+      [name, email, hash, 'admin', perms]
+    );
+    const admin = (await pool.query('SELECT id,name,email,phone,permissions,created_at FROM users WHERE id = $1', [result.rows[0].id])).rows[0];
+    res.status(201).json(admin);
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
-router.put('/admins/:id', requirePermission('admins'), (req, res) => {
+router.put('/admins/:id', requirePermission('admins'), async (req, res) => {
   try {
     const { name, email, phone, permissions, password } = req.body;
     if (!name || !email) return res.status(400).json({ error: 'Nombre y email requeridos' });
     const perms = permissions && permissions !== 'all' ? JSON.stringify(permissions) : null;
     if (password) {
       if (password.length < 6) return res.status(400).json({ error: 'Contrasena min 6 caracteres' });
-      db.prepare('UPDATE users SET name=?,email=?,phone=?,permissions=?,password=? WHERE id=? AND role=?').run(name, email, phone||null, perms, bcrypt.hashSync(password,10), req.params.id, 'admin');
+      await pool.query(
+        "UPDATE users SET name=$1, email=$2, phone=$3, permissions=$4, password=$5 WHERE id=$6 AND role='admin'",
+        [name, email, phone || null, perms, bcrypt.hashSync(password, 10), req.params.id]
+      );
     } else {
-      db.prepare('UPDATE users SET name=?,email=?,phone=?,permissions=? WHERE id=? AND role=?').run(name, email, phone||null, perms, req.params.id, 'admin');
+      await pool.query(
+        "UPDATE users SET name=$1, email=$2, phone=$3, permissions=$4 WHERE id=$5 AND role='admin'",
+        [name, email, phone || null, perms, req.params.id]
+      );
     }
-    res.json(db.prepare('SELECT id,name,email,phone,permissions,created_at FROM users WHERE id = ?').get(req.params.id));
+    const admin = (await pool.query('SELECT id,name,email,phone,permissions,created_at FROM users WHERE id = $1', [req.params.id])).rows[0];
+    res.json(admin);
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
-router.delete('/admins/:id', requirePermission('admins'), (req, res) => {
+router.delete('/admins/:id', requirePermission('admins'), async (req, res) => {
   try {
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'No puedes eliminarte a ti mismo' });
-    db.prepare("DELETE FROM users WHERE id=? AND role='admin'").run(req.params.id);
+    await pool.query("DELETE FROM users WHERE id=$1 AND role='admin'", [req.params.id]);
     res.json({ message: 'Eliminado' });
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
 // Aprobar pedido fiado
-router.patch('/orders/:id/approve-fiado', (req, res) => {
+router.patch('/orders/:id/approve-fiado', async (req, res) => {
   try {
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+    const order = (await pool.query('SELECT * FROM orders WHERE id = $1', [req.params.id])).rows[0];
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
-    db.prepare("UPDATE orders SET payment_status='aprobado', status=CASE WHEN status='pendiente' THEN 'confirmado' ELSE status END WHERE id=?").run(req.params.id);
-    res.json(db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id));
-  } catch(e) { res.status(500).json({ error: 'Error' }); }
+    await pool.query(
+      "UPDATE orders SET payment_status='aprobado', status=CASE WHEN status='pendiente' THEN 'confirmado' ELSE status END WHERE id=$1",
+      [req.params.id]
+    );
+    const updated = (await pool.query('SELECT * FROM orders WHERE id=$1', [req.params.id])).rows[0];
+    res.json(updated);
+  } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
 // Rechazar pedido fiado
-router.patch('/orders/:id/reject-fiado', (req, res) => {
+router.patch('/orders/:id/reject-fiado', async (req, res) => {
   try {
-    db.prepare("UPDATE orders SET payment_status='rechazado', status='cancelado' WHERE id=?").run(req.params.id);
-    res.json(db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id));
-  } catch(e) { res.status(500).json({ error: 'Error' }); }
+    await pool.query("UPDATE orders SET payment_status='rechazado', status='cancelado' WHERE id=$1", [req.params.id]);
+    const updated = (await pool.query('SELECT * FROM orders WHERE id=$1', [req.params.id])).rows[0];
+    res.json(updated);
+  } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
 // Saldar deuda fiado
-router.patch('/orders/:id/saldar', (req, res) => {
+router.patch('/orders/:id/saldar', async (req, res) => {
   try {
-    db.prepare("UPDATE orders SET payment_status='saldado' WHERE id=?").run(req.params.id);
-    res.json(db.prepare('SELECT * FROM orders WHERE id=?').get(req.params.id));
-  } catch(e) { res.status(500).json({ error: 'Error' }); }
+    await pool.query("UPDATE orders SET payment_status='saldado' WHERE id=$1", [req.params.id]);
+    const updated = (await pool.query('SELECT * FROM orders WHERE id=$1', [req.params.id])).rows[0];
+    res.json(updated);
+  } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
 // Lista de deudas (pedidos fiado aprobados sin saldar)
-router.get('/deudas', (req, res) => {
+router.get('/deudas', async (req, res) => {
   try {
-    const orders = db.prepare(`
+    const orders = (await pool.query(`
       SELECT o.*, u.name as user_name, u.phone as user_phone
       FROM orders o LEFT JOIN users u ON o.user_id = u.id
       WHERE o.payment_method = 'fiado' AND o.payment_status = 'aprobado'
       ORDER BY o.created_at ASC
-    `).all();
+    `)).rows;
     const map = {};
     for (const o of orders) {
       const key = o.user_id || o.customer_email;
@@ -254,31 +304,35 @@ router.get('/deudas', (req, res) => {
       map[key].total_deuda += o.total;
     }
     res.json(Object.values(map));
-  } catch(e) { res.status(500).json({ error: 'Error' }); }
+  } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
-module.exports = router;
-
 // ── SETTINGS ───────────────────────────────────────────
-router.get('/settings', (req, res) => {
+router.get('/settings', async (req, res) => {
   try {
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = (await pool.query('SELECT key, value FROM settings')).rows;
     const out = {};
     rows.forEach(r => { out[r.key] = r.value; });
     res.json(out);
   } catch (e) { res.status(500).json({ error: 'Error' }); }
 });
 
-router.put('/settings', requirePermission('settings'), (req, res) => {
+router.put('/settings', requirePermission('settings'), async (req, res) => {
   try {
-    const allowed = ['store_name','whatsapp','address','hours','bank_name','bank_account_holder','bank_account_number','bank_extra','transfer_note'];
-    const upsert = db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value');
+    const allowed = ['store_name', 'whatsapp', 'address', 'hours', 'bank_name', 'bank_account_holder', 'bank_account_number', 'bank_extra', 'transfer_note'];
     for (const key of allowed) {
-      if (req.body[key] !== undefined) upsert.run(key, req.body[key]);
+      if (req.body[key] !== undefined) {
+        await pool.query(
+          'INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value',
+          [key, req.body[key]]
+        );
+      }
     }
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = (await pool.query('SELECT key, value FROM settings')).rows;
     const out = {};
     rows.forEach(r => { out[r.key] = r.value; });
     res.json(out);
   } catch (e) { res.status(500).json({ error: 'Error al guardar' }); }
 });
+
+module.exports = router;

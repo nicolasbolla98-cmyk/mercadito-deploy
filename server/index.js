@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { initializeDatabase } = require('./db/database');
+const { pool, initializeDatabase } = require('./db/database');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,8 +18,6 @@ if (isProd) {
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-initializeDatabase();
-
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
@@ -27,10 +25,9 @@ app.use('/api/admin', require('./routes/admin'));
 app.use('/api/payments', require('./routes/payments'));
 
 // Public settings endpoint
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', async (req, res) => {
   try {
-    const { db } = require('./db/database');
-    const rows = db.prepare('SELECT key, value FROM settings').all();
+    const rows = (await pool.query('SELECT key, value FROM settings')).rows;
     const out = {};
     rows.forEach(r => { out[r.key] = r.value; });
     res.json(out);
@@ -44,4 +41,11 @@ if (isProd) {
   });
 }
 
-app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => console.log(`Servidor corriendo en puerto ${PORT}`));
+  })
+  .catch(err => {
+    console.error('Failed to initialize database:', err);
+    process.exit(1);
+  });

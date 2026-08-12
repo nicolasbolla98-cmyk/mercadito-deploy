@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { db } = require('../db/database');
+const { pool } = require('../db/database');
 const { authenticateToken } = require('../middleware/auth');
 const jwt = require('jsonwebtoken');
 
@@ -13,7 +13,8 @@ function optionalAuth(req, res, next) {
 }
 
 // POST /api/orders
-router.post('/', optionalAuth, (req, res) => {
+router.post('/', optionalAuth, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { customer_name, customer_email, customer_phone, customer_address, notes, items, payment_method } = req.body;
 
@@ -26,11 +27,10 @@ router.post('/', optionalAuth, (req, res) => {
     const validatedItems = [];
 
     for (const item of items) {
-      const product = db.prepare('SELECT * FROM products WHERE id = ? AND active = 1').get(item.product_id);
+      const product = (await pool.query('SELECT * FROM products WHERE id = $1 AND active = 1', [item.product_id])).rows[0];
       if (!product) return res.status(400).json({ error: `Producto ${item.product_id} no encontrado` });
       const quantity = parseFloat(item.quantity);
       if (quantity <= 0) return res.status(400).json({ error: 'Cantidad invalida' });
-      // Use cajon_price when buying by cajón
       const isCajon = item.cajon === true && product.cajon_price;
       const unitPrice = isCajon ? product.cajon_price : product.price;
       const productName = isCajon ? `${product.name} (cajon)` : product.name;
@@ -42,7 +42,7 @@ router.post('/', optionalAuth, (req, res) => {
     // Si paga con credito, verificar saldo
     if (method === 'credito') {
       if (!req.user) return res.status(400).json({ error: 'Debes iniciar sesion para pagar con credito' });
-      const user = db.prepare('SELECT credit_balance FROM users WHERE id = ?').get(req.user.id);
+      const user = (await pool.query('SELECT credit_balance FROM users WHERE id = $1', [req.user.id])).rows[0];
       if (!user || user.credit_balance < total) {
         return res.status(400).json({ error: `Credito insuficiente. Saldo disponible: $${user?.credit_balance?.toLocaleString('es-UY') || 0}` });
       }
@@ -52,41 +52,53 @@ router.post('/', optionalAuth, (req, res) => {
       return res.status(400).json({ error: 'Debes iniciar sesion para pedir fiado' });
     }
 
-    const createOrder = db.transaction(() => {
-      // Si paga con credito, descontar saldo
-      let paymentStatus = 'pendiente';
-      if (method === 'credito') {
-        db.prepare('UPDATE users SET credit_balance = credit_balance - ? WHERE id = ?').run(total, req.user.id);
-        paymentStatus = 'pagado';
-      }
-      // fiado queda en pendiente esperando aprobacion del admin
+    await client.query('BEGIN');
 
-      const r = db.prepare(`
-        INSERT INTO orders (user_id, customer_name, customer_email, customer_phone, customer_address, notes, total, status, payment_method, payment_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)
-      `).run(req.user?.id || null, customer_name, customer_email, customer_phone || null, customer_address || null, notes || null, total, method, paymentStatus);
+    let paymentStatus = 'pendiente';
+    if (method === 'credito') {
+      await client.query('UPDATE users SET credit_balance = credit_balance - $1 WHERE id = $2', [total, req.user.id]);
+      paymentStatus = 'pagado';
+    }
 
-      const orderId = r.lastInsertRowid;
-      const ins = db.prepare('INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal) VALUES (?, ?, ?, ?, ?, ?)');
-      for (const item of validatedItems) ins.run(orderId, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal);
-      return orderId;
-    });
+    const orderResult = await client.query(
+      `INSERT INTO orders (user_id, customer_name, customer_email, customer_phone, customer_address, notes, total, status, payment_method, payment_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendiente', $8, $9) RETURNING id`,
+      [req.user?.id || null, customer_name, customer_email, customer_phone || null, customer_address || null, notes || null, total, method, paymentStatus]
+    );
+    const orderId = orderResult.rows[0].id;
 
-    const orderId = createOrder();
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-    const orderItems = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(orderId);
+    for (const item of validatedItems) {
+      await client.query(
+        'INSERT INTO order_items (order_id, product_id, product_name, product_price, quantity, subtotal) VALUES ($1, $2, $3, $4, $5, $6)',
+        [orderId, item.product_id, item.product_name, item.product_price, item.quantity, item.subtotal]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const order = (await pool.query('SELECT * FROM orders WHERE id = $1', [orderId])).rows[0];
+    const orderItems = (await pool.query('SELECT * FROM order_items WHERE order_id = $1', [orderId])).rows;
     res.status(201).json({ ...order, items: orderItems });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Create order error:', error);
     res.status(500).json({ error: 'Error al crear el pedido' });
+  } finally {
+    client.release();
   }
 });
 
 // GET /api/orders/my
-router.get('/my', authenticateToken, (req, res) => {
+router.get('/my', authenticateToken, async (req, res) => {
   try {
-    const orders = db.prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
-    res.json(orders.map(o => ({ ...o, items: db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(o.id) })));
+    const orders = (await pool.query('SELECT * FROM orders WHERE user_id = $1 ORDER BY created_at DESC', [req.user.id])).rows;
+    const result = await Promise.all(
+      orders.map(async o => {
+        const items = (await pool.query('SELECT * FROM order_items WHERE order_id = $1', [o.id])).rows;
+        return { ...o, items };
+      })
+    );
+    res.json(result);
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error al obtener pedidos' });
@@ -94,11 +106,12 @@ router.get('/my', authenticateToken, (req, res) => {
 });
 
 // GET /api/orders/:id
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(req.params.id);
+    const order = (await pool.query('SELECT * FROM orders WHERE id = $1', [req.params.id])).rows[0];
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
-    res.json({ ...order, items: db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id) });
+    const items = (await pool.query('SELECT * FROM order_items WHERE order_id = $1', [order.id])).rows;
+    res.json({ ...order, items });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error al obtener pedido' });
