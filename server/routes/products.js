@@ -43,13 +43,13 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, description, price, stock, unit, category_id, active, cajon_price } = req.body;
+    const { name, description, price, stock, unit, category_id, active, cajon_price, image_url } = req.body;
     if (!name || price === undefined || stock === undefined) {
       return res.status(400).json({ error: 'Nombre, precio y stock son requeridos' });
     }
     const result = await pool.query(
-      `INSERT INTO products (name, description, price, stock, unit, category_id, active, cajon_price)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      `INSERT INTO products (name, description, price, stock, unit, category_id, active, cajon_price, image_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         name,
         description || null,
@@ -59,6 +59,7 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
         category_id || null,
         active !== undefined ? (active ? 1 : 0) : 1,
         cajon_price ? parseFloat(cajon_price) : null,
+        image_url || null,
       ]
     );
     const newId = result.rows[0].id;
@@ -69,12 +70,12 @@ router.post('/', authenticateToken, requireAdmin, async (req, res) => {
 
 router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, description, price, stock, unit, category_id, active, cajon_price } = req.body;
+    const { name, description, price, stock, unit, category_id, active, cajon_price, image_url } = req.body;
     const existing = (await pool.query('SELECT id FROM products WHERE id = $1', [req.params.id])).rows[0];
     if (!existing) return res.status(404).json({ error: 'Producto no encontrado' });
 
     await pool.query(
-      `UPDATE products SET name=$1, description=$2, price=$3, stock=$4, unit=$5, category_id=$6, active=$7, cajon_price=$8 WHERE id=$9`,
+      `UPDATE products SET name=$1, description=$2, price=$3, stock=$4, unit=$5, category_id=$6, active=$7, cajon_price=$8, image_url=$9 WHERE id=$10`,
       [
         name,
         description || null,
@@ -84,6 +85,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
         category_id || null,
         active !== undefined ? (active ? 1 : 0) : 1,
         cajon_price ? parseFloat(cajon_price) : null,
+        image_url || null,
         req.params.id,
       ]
     );
