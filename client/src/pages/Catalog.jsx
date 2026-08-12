@@ -112,10 +112,11 @@ export default function Catalog() {
   }
 
   const handleAddToCart = (product) => {
-    const mode = product.unit === 'kg' ? (modes[product.id] || 'kg') : undefined
+    const currentMode = modes[product.id] || (product.unit === 'kg' ? 'kg' : 'unit')
+    const mode = currentMode === 'cajon' ? 'cajon' : undefined
     const qty = quantities[product.id] ?? 1
     addItem(product, qty, mode)
-    const key = `${product.id}_${mode || 'unit'}`
+    const key = `${product.id}_${currentMode}`
     setAddedKey(key)
     setTimeout(() => setAddedKey(null), 1500)
   }
@@ -177,8 +178,7 @@ export default function Catalog() {
                 const mode = modes[product.id] || (isKg ? 'kg' : 'unit')
                 const qty = quantities[product.id] ?? 1
                 const displayPrice = mode === 'cajon' ? product.cajon_price : product.price
-                const addedThisKey = addedKey === `${product.id}_${mode === 'cajon' ? 'cajon' : 'unit'}`
-                  || addedKey === `${product.id}_kg`
+                const addedThisKey = addedKey === `${product.id}_${mode}`
 
                 return (
                   <div key={product.id} className="product-card">
