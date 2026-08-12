@@ -46,18 +46,24 @@ function KgSelector({ value, onChange }) {
 }
 
 function UnitSelector({ value, onChange, unit }) {
+  const [display, setDisplay] = useState(String(value))
+
+  useEffect(() => { setDisplay(String(value)) }, [value])
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
       <span style={{ fontSize: '0.8rem', color: 'var(--gray)', fontWeight: 500 }}>Cantidad:</span>
       <input
         type="number"
         min={1}
-        value={value}
-        onFocus={e => e.target.select()}
-        onChange={e => {
-          const v = parseInt(e.target.value)
-          if (!isNaN(v) && v >= 1) onChange(v)
+        value={display}
+        onFocus={() => setDisplay('')}
+        onBlur={() => {
+          const v = parseInt(display)
+          if (!isNaN(v) && v >= 1) { onChange(v); setDisplay(String(v)) }
+          else { onChange(1); setDisplay('1') }
         }}
+        onChange={e => setDisplay(e.target.value)}
         style={{ width: 80, padding: '0.4rem 0.6rem', fontSize: '0.9rem', fontWeight: 600, borderRadius: 8, border: '2px solid #e5e7eb', fontFamily: 'Poppins, sans-serif', textAlign: 'center' }}
       />
       <span style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>{unit}</span>
