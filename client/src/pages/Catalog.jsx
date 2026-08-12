@@ -182,7 +182,11 @@ export default function Catalog() {
 
                 return (
                   <div key={product.id} className="product-card">
-                    <div className="product-image">{getCategoryEmoji(product)}</div>
+                    <div className="product-image">
+                      {product.image_url
+                        ? <img src={product.image_url} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        : getCategoryEmoji(product)}
+                    </div>
                     <div className="product-info">
                       <div className="product-name">{product.name}</div>
 

@@ -23,6 +23,7 @@ app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/admin', require('./routes/admin'));
 app.use('/api/payments', require('./routes/payments'));
+app.use('/api/upload', require('./routes/upload'));
 
 // Public settings endpoint
 app.get('/api/settings', async (req, res) => {

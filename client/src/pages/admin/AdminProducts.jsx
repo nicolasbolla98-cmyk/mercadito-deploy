@@ -17,6 +17,7 @@ const EMPTY_FORM = {
   stock: '',
   unit: 'kg',
   category_id: '',
+  image_url: '',
   active: true,
 }
 
@@ -33,6 +34,7 @@ export default function AdminProducts() {
   const [form, setForm] = useState(EMPTY_FORM)
   const [formError, setFormError] = useState('')
   const [formLoading, setFormLoading] = useState(false)
+  const [imageUploading, setImageUploading] = useState(false)
 
   // Inline editing
   const [inlineEdit, setInlineEdit] = useState({}) // { productId: { field: 'price'|'stock', value } }
@@ -72,6 +74,7 @@ export default function AdminProducts() {
       stock: product.stock,
       unit: product.unit,
       category_id: product.category_id || '',
+      image_url: product.image_url || '',
       active: product.active === 1,
     })
     setFormError('')
@@ -88,6 +91,22 @@ export default function AdminProducts() {
   const handleFormChange = (e) => {
     const { name, value, type, checked } = e.target
     setForm(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }))
+  }
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setImageUploading(true)
+    try {
+      const data = new FormData()
+      data.append('image', file)
+      const res = await api.post('/api/upload/image', data, { headers: { 'Content-Type': 'multipart/form-data' } })
+      setForm(prev => ({ ...prev, image_url: res.data.url }))
+    } catch {
+      setFormError('Error al subir la imagen')
+    } finally {
+      setImageUploading(false)
+    }
   }
 
   const handleFormSubmit = async (e) => {
@@ -115,6 +134,7 @@ export default function AdminProducts() {
         cajon_price: form.cajon_price !== '' ? parseFloat(form.cajon_price) : null,
         stock: parseInt(form.stock),
         category_id: form.category_id || null,
+        image_url: form.image_url || null,
       }
 
       if (editingProduct) {
@@ -446,6 +466,18 @@ export default function AdminProducts() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Foto del producto</label>
+                <input type="file" accept="image/*" onChange={handleImageUpload} className="form-input" style={{ padding: '0.4rem' }} disabled={imageUploading} />
+                {imageUploading && <div style={{ fontSize: '0.82rem', color: 'var(--gray)', marginTop: '0.4rem' }}>Subiendo imagen...</div>}
+                {form.image_url && (
+                  <div style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <img src={form.image_url} alt="preview" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, border: '2px solid #e5e7eb' }} />
+                    <button type="button" className="btn btn-danger btn-sm" onClick={() => setForm(prev => ({ ...prev, image_url: '' }))}>Quitar</button>
+                  </div>
+                )}
               </div>
 
               <div className="form-group">
