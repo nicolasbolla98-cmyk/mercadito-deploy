@@ -173,8 +173,8 @@ export default function Catalog() {
               {products.map(product => {
                 const { text: stockText, cls: stockCls } = getStockInfo(product)
                 const isKg = product.unit === 'kg'
-                const hasCajon = isKg && product.cajon_price
-                const mode = modes[product.id] || 'kg'
+                const hasCajon = product.cajon_price
+                const mode = modes[product.id] || (isKg ? 'kg' : 'unit')
                 const qty = quantities[product.id] ?? 1
                 const displayPrice = mode === 'cajon' ? product.cajon_price : product.price
                 const addedThisKey = addedKey === `${product.id}_${mode === 'cajon' ? 'cajon' : 'unit'}`
@@ -191,7 +191,7 @@ export default function Catalog() {
                         <div style={{ marginBottom: '0.5rem' }}>
                           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }}>
                             <span style={{ fontSize: '0.82rem', background: '#f0fdf4', color: 'var(--green-dark)', borderRadius: 6, padding: '0.2rem 0.5rem', fontWeight: 700 }}>
-                              ${Number(product.price).toLocaleString('es-UY')} / kg
+                              ${Number(product.price).toLocaleString('es-UY')} / {product.unit}
                             </span>
                             <span style={{ fontSize: '0.82rem', background: '#eff6ff', color: '#1d4ed8', borderRadius: 6, padding: '0.2rem 0.5rem', fontWeight: 700 }}>
                               ${Number(product.cajon_price).toLocaleString('es-UY')} / cajón
@@ -199,8 +199,8 @@ export default function Catalog() {
                           </div>
                           {/* Toggle kg / cajón */}
                           <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.4rem' }}>
-                            <button type="button" onClick={() => setMode(product.id, 'kg')} style={{ flex: 1, padding: '0.3rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, border: `2px solid ${mode === 'kg' ? 'var(--green)' : '#e5e7eb'}`, background: mode === 'kg' ? 'var(--green)' : 'white', color: mode === 'kg' ? 'white' : 'var(--dark)', cursor: 'pointer' }}>
-                              Por kg
+                            <button type="button" onClick={() => setMode(product.id, isKg ? 'kg' : 'unit')} style={{ flex: 1, padding: '0.3rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, border: `2px solid ${mode !== 'cajon' ? 'var(--green)' : '#e5e7eb'}`, background: mode !== 'cajon' ? 'var(--green)' : 'white', color: mode !== 'cajon' ? 'white' : 'var(--dark)', cursor: 'pointer' }}>
+                              Por {product.unit}
                             </button>
                             <button type="button" onClick={() => setMode(product.id, 'cajon')} style={{ flex: 1, padding: '0.3rem', borderRadius: 6, fontSize: '0.78rem', fontWeight: 700, border: `2px solid ${mode === 'cajon' ? 'var(--green)' : '#e5e7eb'}`, background: mode === 'cajon' ? 'var(--green)' : 'white', color: mode === 'cajon' ? 'white' : 'var(--dark)', cursor: 'pointer' }}>
                               Por cajón
