@@ -31,4 +31,23 @@ router.post('/image', authenticateToken, requireAdmin, upload.single('image'), a
   }
 });
 
+router.post('/hero', authenticateToken, requireAdmin, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió imagen' });
+
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: 'mercadito/hero', transformation: [{ width: 1920, height: 1080, crop: 'fill', quality: 'auto' }] },
+        (error, result) => error ? reject(error) : resolve(result)
+      );
+      stream.end(req.file.buffer);
+    });
+
+    res.json({ url: result.secure_url });
+  } catch (e) {
+    console.error('Hero upload error:', e);
+    res.status(500).json({ error: 'Error al subir imagen' });
+  }
+});
+
 module.exports = router;
