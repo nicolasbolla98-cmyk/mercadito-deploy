@@ -329,7 +329,7 @@ router.get('/settings', async (req, res) => {
 
 router.put('/settings', requirePermission('settings'), async (req, res) => {
   try {
-    const allowed = ['store_name', 'whatsapp', 'address', 'hours', 'bank_name', 'bank_account_holder', 'bank_account_number', 'bank_extra', 'transfer_note', 'hero_image'];
+    const allowed = ['store_name', 'whatsapp', 'address', 'hours', 'bank_name', 'bank_account_holder', 'bank_account_number', 'bank_extra', 'transfer_note', 'hero_image', 'bank_accounts'];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
         await pool.query(
