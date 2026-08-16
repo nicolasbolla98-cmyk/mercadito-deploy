@@ -18,7 +18,7 @@ router.post('/', optionalAuth, async (req, res) => {
   try {
     const { customer_name, customer_email, customer_phone, customer_address, notes, items, payment_method, transfer_bank } = req.body;
 
-    if (!customer_name || !customer_email) return res.status(400).json({ error: 'Nombre y email requeridos' });
+    if (!customer_name) return res.status(400).json({ error: 'Nombre requerido' });
     if (!items || !Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'El pedido debe tener al menos un producto' });
 
     const method = ['efectivo', 'credito', 'transferencia', 'fiado'].includes(payment_method) ? payment_method : 'efectivo';
@@ -67,7 +67,7 @@ router.post('/', optionalAuth, async (req, res) => {
     const orderResult = await client.query(
       `INSERT INTO orders (user_id, customer_name, customer_email, customer_phone, customer_address, notes, total, status, payment_method, payment_status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pendiente', $8, $9) RETURNING id`,
-      [req.user?.id || null, customer_name, customer_email, customer_phone || null, customer_address || null,
+      [req.user?.id || null, customer_name, customer_email || '', customer_phone || null, customer_address || null,
         [notes, transfer_bank ? `Banco elegido: ${transfer_bank}` : null].filter(Boolean).join(' | ') || null,
         total, method, paymentStatus]
     );
