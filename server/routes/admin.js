@@ -11,7 +11,7 @@ router.get('/stats', async (req, res) => {
   try {
     const { from, to } = req.query;
     const totalOrders    = (await pool.query('SELECT COUNT(*) as c FROM orders')).rows[0].c;
-    const totalRevenue   = (await pool.query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado'")).rows[0].s;
+    const totalRevenue   = (await pool.query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado' AND (payment_method != 'transferencia' OR payment_status = 'pagado')")).rows[0].s;
     const totalCustomers = (await pool.query("SELECT COUNT(*) as c FROM users WHERE role = 'customer'")).rows[0].c;
     const totalProducts  = (await pool.query('SELECT COUNT(*) as c FROM products WHERE active = 1')).rows[0].c;
     const recentOrders   = (await pool.query('SELECT id,customer_name,customer_email,total,status,payment_status,payment_method,created_at FROM orders ORDER BY created_at DESC LIMIT 5')).rows;
@@ -20,7 +20,7 @@ router.get('/stats', async (req, res) => {
     let filteredRevenue = totalRevenue;
     if (from && to) {
       filteredOrders  = (await pool.query("SELECT COUNT(*) as c FROM orders WHERE DATE(created_at) BETWEEN $1 AND $2", [from, to])).rows[0].c;
-      filteredRevenue = (await pool.query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado' AND DATE(created_at) BETWEEN $1 AND $2", [from, to])).rows[0].s;
+      filteredRevenue = (await pool.query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado' AND (payment_method != 'transferencia' OR payment_status = 'pagado') AND DATE(created_at) BETWEEN $1 AND $2", [from, to])).rows[0].s;
     }
 
     res.json({ totalOrders, totalRevenue, totalCustomers, totalProducts, recentOrders, filteredOrders, filteredRevenue });
@@ -68,6 +68,28 @@ router.patch('/orders/:id/status', async (req, res) => {
     const items = (await pool.query('SELECT * FROM order_items WHERE order_id = $1', [req.params.id])).rows;
     res.json({ ...order, items });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
+});
+
+// Confirmar transferencia recibida
+router.patch('/orders/:id/confirm-transfer', async (req, res) => {
+  try {
+    await pool.query("UPDATE orders SET payment_status = 'pagado' WHERE id = $1", [req.params.id]);
+    const order = (await pool.query(
+      'SELECT o.*, u.name as user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE o.id = $1',
+      [req.params.id]
+    )).rows[0];
+    const items = (await pool.query('SELECT * FROM order_items WHERE order_id = $1', [req.params.id])).rows;
+    res.json({ ...order, items });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
+});
+
+// Borrar pedido
+router.delete('/orders/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM order_items WHERE order_id = $1', [req.params.id]);
+    await pool.query('DELETE FROM orders WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error al borrar pedido' }); }
 });
 
 // Marcar pago manualmente (uno o varios pedidos)
