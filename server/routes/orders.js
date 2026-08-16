@@ -47,9 +47,13 @@ router.post('/', optionalAuth, async (req, res) => {
         return res.status(400).json({ error: `Credito insuficiente. Saldo disponible: $${user?.credit_balance?.toLocaleString('es-UY') || 0}` });
       }
     }
-    // Fiado requiere estar logueado
-    if (method === 'fiado' && !req.user) {
-      return res.status(400).json({ error: 'Debes iniciar sesion para pedir fiado' });
+    // Fiado requiere estar logueado y tener permiso
+    if (method === 'fiado') {
+      if (!req.user) return res.status(400).json({ error: 'Debes iniciar sesion para solicitar pedido a credito' });
+      const fiadoUser = (await pool.query('SELECT can_credit_order FROM users WHERE id = $1', [req.user.id])).rows[0];
+      if (!fiadoUser || !fiadoUser.can_credit_order) {
+        return res.status(400).json({ error: 'No tienes permiso para solicitar pedido a credito. Contacta al negocio.' });
+      }
     }
 
     await client.query('BEGIN');

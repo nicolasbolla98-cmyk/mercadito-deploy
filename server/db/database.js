@@ -94,6 +94,7 @@ async function initializeDatabase() {
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_status TEXT DEFAULT 'pendiente'`);
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_id TEXT DEFAULT NULL`);
     await client.query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS cajon_price REAL DEFAULT NULL`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS can_credit_order INTEGER NOT NULL DEFAULT 0`);
 
     // ── Seed default settings ──────────────────────────────────────────────────
     const defaultSettings = [

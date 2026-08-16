@@ -143,7 +143,7 @@ router.post('/orders/confirm-payment', async (req, res) => {
 router.get('/users', async (req, res) => {
   try {
     const users = (await pool.query(`
-      SELECT u.id, u.name, u.email, u.phone, u.credit_balance, u.created_at,
+      SELECT u.id, u.name, u.email, u.phone, u.credit_balance, u.can_credit_order, u.created_at,
              COUNT(o.id) as order_count,
              COALESCE(SUM(CASE WHEN o.payment_status != 'pagado' AND o.status != 'cancelado' THEN o.total ELSE 0 END), 0) as deuda_total
       FROM users u LEFT JOIN orders o ON u.id = o.user_id
@@ -176,6 +176,18 @@ router.patch('/users/:id/credit', requirePermission('customers'), async (req, re
     const updated = (await pool.query('SELECT id, name, email, credit_balance FROM users WHERE id = $1', [req.params.id])).rows[0];
     res.json(updated);
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error al actualizar credito' }); }
+});
+
+// Habilitar/deshabilitar pedido a crédito para un cliente
+router.patch('/users/:id/toggle-credit-order', requirePermission('customers'), async (req, res) => {
+  try {
+    const user = (await pool.query("SELECT id, can_credit_order FROM users WHERE id = $1 AND role = 'customer'", [req.params.id])).rows[0];
+    if (!user) return res.status(404).json({ error: 'Cliente no encontrado' });
+    const newVal = user.can_credit_order ? 0 : 1;
+    await pool.query('UPDATE users SET can_credit_order = $1 WHERE id = $2', [newVal, req.params.id]);
+    const updated = (await pool.query('SELECT id, name, email, credit_balance, can_credit_order FROM users WHERE id = $1', [req.params.id])).rows[0];
+    res.json(updated);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
 });
 
 // Pedidos de un cliente

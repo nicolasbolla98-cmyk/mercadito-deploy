@@ -84,7 +84,7 @@ router.post('/login', async (req, res) => {
 router.get('/me', authenticateToken, async (req, res) => {
   try {
     const user = (await pool.query(
-      'SELECT id, name, email, phone, role, permissions, credit_balance, created_at FROM users WHERE id = $1',
+      'SELECT id, name, email, phone, role, permissions, credit_balance, can_credit_order, created_at FROM users WHERE id = $1',
       [req.user.id]
     )).rows[0];
     if (!user) {
