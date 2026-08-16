@@ -14,7 +14,7 @@ router.get('/stats', async (req, res) => {
     const totalRevenue   = (await pool.query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado' AND (payment_method != 'transferencia' OR payment_status = 'pagado')")).rows[0].s;
     const totalCustomers = (await pool.query("SELECT COUNT(*) as c FROM users WHERE role = 'customer'")).rows[0].c;
     const totalProducts  = (await pool.query('SELECT COUNT(*) as c FROM products WHERE active = 1')).rows[0].c;
-    const recentOrders   = (await pool.query('SELECT id,customer_name,customer_email,total,status,payment_status,payment_method,created_at FROM orders ORDER BY created_at DESC LIMIT 5')).rows;
+    const recentOrders   = (await pool.query('SELECT id,user_id,customer_name,customer_email,total,status,payment_status,payment_method,created_at FROM orders ORDER BY created_at DESC LIMIT 5')).rows;
 
     let filteredOrders = totalOrders;
     let filteredRevenue = totalRevenue;
