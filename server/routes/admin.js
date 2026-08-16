@@ -9,24 +9,34 @@ router.use(authenticateToken, requireAdmin);
 // ── STATS ──────────────────────────────────────────────
 router.get('/stats', async (req, res) => {
   try {
+    const { from, to } = req.query;
     const totalOrders    = (await pool.query('SELECT COUNT(*) as c FROM orders')).rows[0].c;
     const totalRevenue   = (await pool.query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado'")).rows[0].s;
     const totalCustomers = (await pool.query("SELECT COUNT(*) as c FROM users WHERE role = 'customer'")).rows[0].c;
     const totalProducts  = (await pool.query('SELECT COUNT(*) as c FROM products WHERE active = 1')).rows[0].c;
     const recentOrders   = (await pool.query('SELECT id,customer_name,customer_email,total,status,payment_status,payment_method,created_at FROM orders ORDER BY created_at DESC LIMIT 5')).rows;
-    res.json({ totalOrders, totalRevenue, totalCustomers, totalProducts, recentOrders });
+
+    let filteredOrders = totalOrders;
+    let filteredRevenue = totalRevenue;
+    if (from && to) {
+      filteredOrders  = (await pool.query("SELECT COUNT(*) as c FROM orders WHERE DATE(created_at) BETWEEN $1 AND $2", [from, to])).rows[0].c;
+      filteredRevenue = (await pool.query("SELECT COALESCE(SUM(total),0) as s FROM orders WHERE status != 'cancelado' AND DATE(created_at) BETWEEN $1 AND $2", [from, to])).rows[0].s;
+    }
+
+    res.json({ totalOrders, totalRevenue, totalCustomers, totalProducts, recentOrders, filteredOrders, filteredRevenue });
   } catch (e) { console.error(e); res.status(500).json({ error: 'Error' }); }
 });
 
 // ── ORDERS ─────────────────────────────────────────────
 router.get('/orders', async (req, res) => {
   try {
-    const { status, payment_status } = req.query;
+    const { status, payment_status, from, to } = req.query;
     let q = 'SELECT o.*, u.name as user_name FROM orders o LEFT JOIN users u ON o.user_id = u.id WHERE 1=1';
     const params = [];
     let paramIdx = 1;
     if (status)         { q += ` AND o.status = $${paramIdx++}`;         params.push(status); }
     if (payment_status) { q += ` AND o.payment_status = $${paramIdx++}`; params.push(payment_status); }
+    if (from && to)     { q += ` AND DATE(o.created_at) BETWEEN $${paramIdx++} AND $${paramIdx++}`; params.push(from, to); }
     q += ' ORDER BY o.created_at DESC';
     const rows = (await pool.query(q, params)).rows;
     res.json(rows);
